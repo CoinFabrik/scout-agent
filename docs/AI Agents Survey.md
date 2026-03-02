@@ -86,9 +86,9 @@ flowchart LR
 ### 3.2 Entry Point Analysis (Internal Call Expansion)
 
 **Approach** Use libraries like
-[tree-sitter](https://github.com/wrale/mcp-server-tree-sitter) to start from an
-entry point (e.g., public function, CLI command) and include all internally
-called functions and definitions in a single context.
+[tree-sitter](https://tree-sitter.github.io/tree-sitter/) to start from an entry
+point (e.g., public function, CLI command) and include all internally called
+functions and definitions in a single context.
 
 **Challenges**
 
@@ -97,11 +97,15 @@ called functions and definitions in a single context.
 
 ```mermaid
 flowchart LR
+    C1[Called Function A]
+    C2[Called Function B]
+    C3[Called Function C]
     LLM[Single LLM Call]
-    LLM <-- EP[Entry Point]
-    EP --> C1[Called Function A]
-    EP --> C2[Called Function B]
-    C2 --> C3[Called Function C]
+    EP[Entry Point]
+    C1 --> EP
+    C2 --> EP
+    C3 --> C2
+    EP --> LLM
 ```
 
 ### 3.3 Autonomous Agents & Agent–Computer Interfaces (ACI)
@@ -251,4 +255,3 @@ Systems that combine:
 
 can achieve significantly higher accuracy, lower cost, and better alignment in
 complex auditing and code analysis workflows.
-
