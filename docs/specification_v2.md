@@ -157,12 +157,12 @@ The system operates as a cyclical, state-driven graph:
 
 # Initial Contract Set for Testing
 
-Repository URI: https://github.com/code-423n4/2025-02-blend
+**Repository URI**: https://github.com/code-423n4/2025-02-blend
 
-Audit report:
+**Audit report**:
 https://code4rena.com/reports/2025-02-blend-v2-audit-certora-formal-verification
 
-Scope:
+**Scope**:
 
-- ./blend-contracts-v2/backstop/
-- ./blend-contracts-v2/pool/
+- `./blend-contracts-v2/backstop/`
+- `./blend-contracts-v2/pool/`
