@@ -1,0 +1,172 @@
+from __future__ import annotations
+
+from io import StringIO
+from pathlib import Path
+
+from scout_agent.app.console_reporting import ConsoleOutput, build_console_output
+from scout_agent.domain.audit import AuditState, Finding
+from scout_agent.runtime.extract.models import ExtractFactsPipelineResult
+
+
+def _audit_state() -> AuditState:
+    return {
+        "project_root": "/tmp/project",
+        "facts_path": "/tmp/project/FACTS.yaml",
+        "facts_index": {},
+        "files_to_review": [],
+        "current_file": None,
+        "last_supervisor_decision": None,
+        "pending_delegations": [],
+        "completed_delegation_keys": [],
+        "needs_info_notes": [],
+        "finding_keys": [],
+        "files_reviewed": ["contracts/gateway.rs"],
+        "verified_findings": [
+            Finding(
+                pattern="Duplicate vector elements",
+                severity="HIGH",
+                location="contracts/gateway.rs:22",
+                description="Vector elements are aggregated without uniqueness checks.",
+                evidence="contracts/gateway.rs:22-31",
+            )
+        ],
+        "expert_batch_items": [],
+    }
+
+
+def test_build_console_output_returns_plain_console_output() -> None:
+    output = build_console_output(stdout=StringIO(), stderr=StringIO())
+
+    assert isinstance(output, ConsoleOutput)
+
+
+def test_console_output_print_extract_summary() -> None:
+    stdout = StringIO()
+    output = ConsoleOutput(stdout=stdout, stderr=StringIO())
+
+    output.print_extract_summary(
+        result=ExtractFactsPipelineResult(
+            project_root=Path("/tmp/project"),
+            facts_path=Path("/tmp/project/FACTS.yaml"),
+            file_count=3,
+            function_count=11,
+            scope_fingerprint="a" * 64,
+        ),
+    )
+
+    assert stdout.getvalue().splitlines() == [
+        "FACTS written to: /tmp/project/FACTS.yaml",
+        "Files analyzed: 3",
+        "Functions analyzed: 11",
+        f"Scope fingerprint: {'a' * 64}",
+    ]
+
+
+def test_console_output_print_audit_summary() -> None:
+    stdout = StringIO()
+    output = ConsoleOutput(stdout=stdout, stderr=StringIO())
+
+    output.print_audit_summary(
+        report_path=Path("/tmp/project/REPORT.md"),
+        final_state=_audit_state(),
+    )
+
+    assert stdout.getvalue().splitlines() == [
+        f"REPORT written to: {Path('/tmp/project/REPORT.md').resolve()}",
+        "Files reviewed: 1",
+        "Verified findings: 1",
+    ]
+
+
+def test_console_output_print_error() -> None:
+    stderr = StringIO()
+    output = ConsoleOutput(stdout=StringIO(), stderr=stderr)
+
+    output.print_error("boom")
+
+    assert stderr.getvalue() == "Error: boom\n"
+
+
+def test_extract_progress_reporter_prints_started_completed_and_failed_lines() -> None:
+    stdout = StringIO()
+    output = ConsoleOutput(stdout=stdout, stderr=StringIO())
+    reporter = output.make_extract_progress_reporter()
+
+    reporter.started(
+        project_root=Path("/tmp/project"),
+        total_files=2,
+        model_name="anthropic:claude-sonnet-4-5",
+        llm_mode="consistent",
+    )
+    reporter.file_started(index=1, total=2, relative_path="contracts/a.rs")
+    reporter.file_completed(
+        index=1,
+        total=2,
+        relative_path="contracts/a.rs",
+        function_count=3,
+    )
+    reporter.file_failed(
+        index=2,
+        total=2,
+        relative_path="contracts/b.rs",
+        error_type="ValueError",
+        message="broken inventory",
+    )
+    reporter.close()
+
+    assert stdout.getvalue().splitlines() == [
+        "Starting extract-facts for /tmp/project with 2 file(s) using anthropic:claude-sonnet-4-5 [consistent]",
+        "Extracting 1/2: contracts/a.rs",
+        "Completed 1/2: contracts/a.rs (3 function(s))",
+        "Failed 2/2: contracts/b.rs (ValueError: broken inventory)",
+    ]
+
+
+def test_audit_progress_reporter_prints_progress_lines() -> None:
+    stdout = StringIO()
+    output = ConsoleOutput(stdout=stdout, stderr=StringIO())
+    reporter = output.make_audit_progress_reporter()
+
+    reporter.started(
+        project_root=Path("/tmp/project"),
+        total_files=2,
+        model_name="anthropic:claude-sonnet-4-5",
+        llm_mode="consistent",
+    )
+    reporter.file_started(index=1, total=2, current_file="contracts/a.rs")
+    reporter.supervisor_pass(
+        current_file="contracts/a.rs",
+        pass_index=1,
+        completed_checks=0,
+        verified_findings=0,
+        needs_info_notes=0,
+    )
+    reporter.delegation_batch(current_file="contracts/a.rs", delegation_count=3)
+    reporter.finding_verified(
+        total_verified_findings=1,
+        finding=Finding(
+            pattern="Unchecked admin transfer",
+            severity="HIGH",
+            location="contracts/a.rs:17",
+            description="x",
+            evidence="contracts/a.rs:17-22",
+        ),
+    )
+    reporter.duplicate_delegations_filtered(
+        current_file="contracts/a.rs",
+        requested=2,
+        dropped=1,
+        remaining=1,
+    )
+    reporter.file_completed(reviewed=1, total=2, current_file="contracts/a.rs")
+    reporter.close()
+
+    assert stdout.getvalue().splitlines() == [
+        "Starting audit for /tmp/project with 2 file(s) using anthropic:claude-sonnet-4-5 [consistent]",
+        "Auditing 1/2: contracts/a.rs",
+        "contracts/a.rs: supervisor pass 1 (0 completed checks, 0 findings, 0 needs-info notes)",
+        "contracts/a.rs: delegating 3 expert checks",
+        "Verified HIGH finding #1: Unchecked admin transfer at contracts/a.rs:17",
+        "contracts/a.rs: dropped 1 duplicate delegations (1 new expert checks remain)",
+        "Completed 1/2: contracts/a.rs",
+    ]
