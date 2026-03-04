@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from scout_agent.app.console_reporting import PlainExtractProgressReporter
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from scout_agent.app.console_reporting import PlainExtractProgressReporter
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +33,10 @@ class FileExtractionFailure:
     relative_path: str
     error_type: str
     message: str
+
+
+class RetryableExtractionError(ValueError):
+    """Raised for malformed extraction outputs that are safe to retry."""
 
 
 class ExtractFactsParallelError(ValueError):

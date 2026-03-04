@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Final
 
 from scout_agent.domain.audit import AuditState, Finding
-from scout_agent.domain.facts import FactsDocument, list_fact_paths
+from scout_agent.domain.facts import FactsDocument
 
 SEVERITY_ORDER: Final[dict[str, int]] = {
     "CRITICAL": 0,
@@ -25,15 +25,6 @@ def validate_report_coverage(
         raise ValueError(
             "Cannot generate REPORT.md while files_to_review is not empty: "
             f"{state['files_to_review']}"
-        )
-
-    expected_files = sorted(list_fact_paths(facts_document))
-    reviewed_files = sorted(state["files_reviewed"])
-
-    if reviewed_files != expected_files:
-        raise ValueError(
-            "Cannot generate REPORT.md because files_reviewed does not match facts coverage. "
-            f"Expected {expected_files}, found {reviewed_files}."
         )
 
 
@@ -95,7 +86,7 @@ def render_report_markdown(
             "",
             "## Coverage Appendix",
             "",
-            *[f"- {file_facts.path}" for file_facts in facts_document.files],
+            *[f"- {path}" for path in state["files_reviewed"]],
             "",
         ]
     )

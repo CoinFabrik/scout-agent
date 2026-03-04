@@ -5,6 +5,7 @@ from argparse import Namespace
 from scout_agent.app.console_reporting import ConsoleOutput
 from scout_agent.configuration.scout_config import load_default_scout_config
 from scout_agent.configuration.settings import (
+    resolve_extra_prompt_text,
     resolve_facts_path,
     resolve_llm_mode,
     resolve_model_name,
@@ -27,6 +28,7 @@ def run_audit_command(
     scout_config = load_default_scout_config(project_root)
     facts_path = resolve_facts_path(project_root, args.facts_path)
     report_path = resolve_report_path(project_root, args.report_path)
+    extra_prompt = resolve_extra_prompt_text(project_root, args.extra_prompt)
     scout_files = scout_config.files if scout_config else None
     llm_mode = resolve_llm_mode(
         args.llm_mode,
@@ -42,20 +44,20 @@ def run_audit_command(
         scout_config_model=scout_config.model if scout_config else None,
         facts_model=initialized.facts_document.model,
     )
+
     context = AuditContext(
         project_root=project_root,
         report_path=report_path,
         facts_document=initialized.facts_document,
-        facts_index=initialized.initial_state["facts_index"],
         model_name=model_name,
         llm_mode=llm_mode,
+        extra_prompt=extra_prompt,
+        initial_state=initialized.initial_state,
         reporter=output.make_audit_progress_reporter(),
     )
 
     try:
-        final_state = run_audit(
-            runtime=context, initial_state=initialized.initial_state
-        )
+        final_state = run_audit(runtime=context)
     finally:
         context.reporter.close()
 

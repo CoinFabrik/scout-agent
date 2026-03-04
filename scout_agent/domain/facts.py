@@ -1,120 +1,79 @@
 from __future__ import annotations
+from pydantic import BaseModel
 
 from pathlib import Path
 from typing import Final, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
-
-from .base import StrictModel
-
-FACTS_SCHEMA_VERSION: Final[str] = "1"
-
-FactStatus = Literal["present", "absent", "unknown"]
-FunctionKind = Literal["function", "method"]
-FunctionVisibility = Literal["public", "private", "unknown"]
+from pydantic import ConfigDict, Field, field_validator
 
 
-class AuthorizationFact(StrictModel):
-    status: FactStatus
-    reasoning: str = Field(min_length=1)
-    evidence: list[str] = Field(default_factory=list)
+FACTS_SCHEMA_VERSION: Final[str] = "2"
+OPTIONAL_FUNCTION_SUMMARY_FIELDS: Final[tuple[str, ...]] = (
+    "authorization",
+    "vector_params",
+    "time_dependent",
+    "sentinel_values",
+)
 
 
-class VectorParametersFact(StrictModel):
-    status: FactStatus
-    reasoning: str = Field(min_length=1)
-    parameters: list[str] = Field(default_factory=list)
+class FunctionSummary(BaseModel):
+    model_config = ConfigDict(extra="ignore")
 
+    authorization: str | None = Field(default=None, min_length=1)
+    vector_params: str | None = Field(default=None, min_length=1)
+    time_dependent: str | None = Field(default=None, min_length=1)
+    sentinel_values: str | None = Field(default=None, min_length=1)
 
-class TimeDependentStateFact(StrictModel):
-    status: FactStatus
-    reasoning: str = Field(min_length=1)
-    evidence: list[str] = Field(default_factory=list)
-
-
-class SentinelValuesFact(StrictModel):
-    status: FactStatus
-    reasoning: str = Field(min_length=1)
-    values: list[str] = Field(default_factory=list)
-
-
-class FunctionFactBundle(StrictModel):
-    authorization: AuthorizationFact
-    vector_parameters: VectorParametersFact
-    time_dependent_state: TimeDependentStateFact
-    sentinel_values: SentinelValuesFact
-
-
-class FunctionFacts(StrictModel):
-    function_id: str = Field(min_length=1)
-    name: str = Field(min_length=1)
-    kind: FunctionKind
-    visibility: FunctionVisibility
-    line_start: int
-    line_end: int
-    signature: str = Field(min_length=1)
-    impl_target: str | None = None
-    facts: FunctionFactBundle
-
-    @field_validator("line_start", "line_end")
+    @field_validator(*OPTIONAL_FUNCTION_SUMMARY_FIELDS, mode="before")
     @classmethod
-    def _line_numbers_positive(cls, value: int) -> int:
-        if value < 1:
-            raise ValueError("line numbers must be >= 1")
-        return value
+    def _normalize_optional_summary_field(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
 
-    @field_validator("line_end")
-    @classmethod
-    def _line_end_not_before_start(
-        cls,
-        value: int,
-        info: ValidationInfo,
-    ) -> int:
-        start = info.data.get("line_start")
-        if start is not None and value < start:
-            raise ValueError("line_end must be >= line_start")
-        return value
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        if cleaned.lower().rstrip(".") == "none":
+            return None
+        return cleaned
 
 
-class FileFacts(StrictModel):
-    path: str = Field(min_length=1)
-    content_sha256: str = Field(min_length=1)
-    functions: list[FunctionFacts] = Field(default_factory=list)
-
-
-class FactsDocument(StrictModel):
-    schema_version: Literal["1"] = FACTS_SCHEMA_VERSION
+class FactsDocument(BaseModel):
+    schema_version: Literal["2"] = FACTS_SCHEMA_VERSION
     generated_at_utc: str = Field(min_length=1)
     project_root: str = Field(min_length=1)
     model: str = Field(min_length=1)
     llm_mode: str = Field(min_length=1)
     scope_fingerprint: str = Field(min_length=1)
-    files: list[FileFacts] = Field(default_factory=list)
+    functions: dict[str, FunctionSummary] = Field(default_factory=dict)
 
-    @field_validator("files")
+    @field_validator("functions")
     @classmethod
-    def _file_paths_unique(cls, value: list[FileFacts]) -> list[FileFacts]:
-        seen: set[str] = set()
-        duplicates: list[str] = []
+    def _function_keys_unique_and_non_empty(
+        cls,
+        value: dict[str, FunctionSummary],
+    ) -> dict[str, FunctionSummary]:
+        normalized: dict[str, FunctionSummary] = {}
 
-        for file_facts in value:
-            if file_facts.path in seen:
-                duplicates.append(file_facts.path)
-            seen.add(file_facts.path)
+        for function_key, summary in value.items():
+            cleaned_key = function_key.strip()
+            if not cleaned_key:
+                raise ValueError("Function keys in facts document must be non-empty.")
+            if cleaned_key in normalized:
+                raise ValueError(
+                    f"Duplicate function key in facts document: {cleaned_key}"
+                )
+            normalized[cleaned_key] = summary
 
-        if duplicates:
-            duplicate_list = ", ".join(sorted(set(duplicates)))
-            raise ValueError(
-                f"Duplicate file paths in facts document: {duplicate_list}"
-            )
-
-        return value
+        return normalized
 
 
 def write_facts_document(path: Path, document: FactsDocument) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = document.model_dump(mode="python")
+    payload = document.model_dump(mode="python", exclude_none=True)
 
     with path.open("w", encoding="utf-8") as handle:
         yaml.safe_dump(
@@ -138,9 +97,54 @@ def load_facts_document(path: Path) -> FactsDocument:
     return FactsDocument.model_validate(payload)
 
 
-def build_facts_index(document: FactsDocument) -> dict[str, FileFacts]:
-    return {file_facts.path: file_facts for file_facts in document.files}
+def functions_for_file(
+    document: FactsDocument,
+    relative_path: str,
+) -> dict[str, FunctionSummary]:
+    return {
+        function_key: summary
+        for function_key, summary in document.functions.items()
+        if file_path_from_function_key(function_key) == relative_path
+    }
 
 
-def list_fact_paths(document: FactsDocument) -> list[str]:
-    return [file_facts.path for file_facts in document.files]
+def count_functions(document: FactsDocument) -> int:
+    return len(document.functions)
+
+
+def fact_paths(document: FactsDocument) -> set[str]:
+    return {
+        file_path_from_function_key(function_key) for function_key in document.functions
+    }
+
+
+def build_file_fact_index(
+    document: FactsDocument,
+) -> dict[str, dict[str, FunctionSummary]]:
+    file_index: dict[str, dict[str, FunctionSummary]] = {}
+
+    for function_key, summary in document.functions.items():
+        file_path = file_path_from_function_key(function_key)
+        file_index.setdefault(file_path, {})[function_key] = summary
+
+    return file_index
+
+
+def present_summary_fields(summary: FunctionSummary) -> list[tuple[str, str]]:
+    return [
+        (field_name, value)
+        for field_name in OPTIONAL_FUNCTION_SUMMARY_FIELDS
+        if (value := getattr(summary, field_name)) is not None
+    ]
+
+
+def file_path_from_function_key(function_key: str) -> str:
+    cleaned_key = function_key.strip()
+    separator_index = cleaned_key.find(".rs::")
+    if separator_index == -1:
+        raise ValueError(
+            "Function key does not contain a Rust source path prefix: "
+            f"{function_key}"
+        )
+
+    return cleaned_key[: separator_index + len(".rs")]

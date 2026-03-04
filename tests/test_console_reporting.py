@@ -10,16 +10,9 @@ from scout_agent.runtime.extract.models import ExtractFactsPipelineResult
 
 def _audit_state() -> AuditState:
     return {
-        "project_root": "/tmp/project",
-        "facts_path": "/tmp/project/FACTS.yaml",
-        "facts_index": {},
+        "project_root": Path("/tmp/project"),
+        "facts_path": Path("/tmp/project/FACTS.yaml"),
         "files_to_review": [],
-        "current_file": None,
-        "last_supervisor_decision": None,
-        "pending_delegations": [],
-        "completed_delegation_keys": [],
-        "needs_info_notes": [],
-        "finding_keys": [],
         "files_reviewed": ["contracts/gateway.rs"],
         "verified_findings": [
             Finding(
@@ -30,7 +23,7 @@ def _audit_state() -> AuditState:
                 evidence="contracts/gateway.rs:22-31",
             )
         ],
-        "expert_batch_items": [],
+        "finding_keys": [],
     }
 
 
@@ -134,14 +127,6 @@ def test_audit_progress_reporter_prints_progress_lines() -> None:
         llm_mode="consistent",
     )
     reporter.file_started(index=1, total=2, current_file="contracts/a.rs")
-    reporter.supervisor_pass(
-        current_file="contracts/a.rs",
-        pass_index=1,
-        completed_checks=0,
-        verified_findings=0,
-        needs_info_notes=0,
-    )
-    reporter.delegation_batch(current_file="contracts/a.rs", delegation_count=3)
     reporter.finding_verified(
         total_verified_findings=1,
         finding=Finding(
@@ -152,21 +137,49 @@ def test_audit_progress_reporter_prints_progress_lines() -> None:
             evidence="contracts/a.rs:17-22",
         ),
     )
-    reporter.duplicate_delegations_filtered(
-        current_file="contracts/a.rs",
-        requested=2,
-        dropped=1,
-        remaining=1,
-    )
     reporter.file_completed(reviewed=1, total=2, current_file="contracts/a.rs")
     reporter.close()
 
     assert stdout.getvalue().splitlines() == [
         "Starting audit for /tmp/project with 2 file(s) using anthropic:claude-sonnet-4-5 [consistent]",
         "Auditing 1/2: contracts/a.rs",
-        "contracts/a.rs: supervisor pass 1 (0 completed checks, 0 findings, 0 needs-info notes)",
-        "contracts/a.rs: delegating 3 expert checks",
         "Verified HIGH finding #1: Unchecked admin transfer at contracts/a.rs:17",
-        "contracts/a.rs: dropped 1 duplicate delegations (1 new expert checks remain)",
         "Completed 1/2: contracts/a.rs",
+    ]
+
+
+def test_audit_progress_reporter_prints_expert_and_tool_logs() -> None:
+    stdout = StringIO()
+    output = ConsoleOutput(stdout=stdout, stderr=StringIO())
+    reporter = output.make_audit_progress_reporter()
+
+    reporter.expert_spawned(expert_name="time_state")
+    reporter.tool_used(
+        tool_name="read_code_chunk",
+        target="contracts/a.rs",
+        expert_name="time_state",
+        line_start=12,
+        line_end=40,
+    )
+    reporter.tool_used(
+        tool_name="read",
+        target="/contracts/a.rs",
+        offset=0,
+        limit=2000,
+        line_start=1,
+        line_end=75,
+    )
+    reporter.tool_denied(
+        tool_name="read",
+        target="/contracts/b.rs",
+        current_file="/contracts/a.rs",
+        reason="outside-current-file-scope",
+    )
+    reporter.close()
+
+    assert stdout.getvalue().splitlines() == [
+        "Spawning expert: time_state",
+        "Tool used: actor=time_state tool=read_code_chunk target=contracts/a.rs lines=12-40",
+        "Tool used: actor=supervisor tool=read target=/contracts/a.rs lines=1-75 offset=0 limit=2000",
+        "Tool denied: actor=supervisor tool=read target=/contracts/b.rs current=/contracts/a.rs reason=outside-current-file-scope",
     ]

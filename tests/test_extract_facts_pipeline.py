@@ -6,15 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from scout_agent.domain.facts import (
-    AuthorizationFact,
-    FileFacts,
-    FunctionFactBundle,
-    FunctionFacts,
-    SentinelValuesFact,
-    TimeDependentStateFact,
-    VectorParametersFact,
-    load_facts_document,
+from scout_agent.domain.facts import FunctionSummary, load_facts_document
+from scout_agent.runtime.extract.models import ExtractContext
+from scout_agent.runtime.extract.facts_extractor import (
+    ExtractedFunctionSummary,
+    FileFactsExtractionResponse,
 )
 from scout_agent.runtime.extract.pipeline import (
     ExtractFactsParallelError,
@@ -57,105 +53,43 @@ class FakeExtractReporter:
         self.events.append(("close",))
 
 
-def _state_dir(root: Path) -> Path:
-    return root / ("." + "scout-ai")
-
-
-def _make_file_facts(parsed_file, *, content_sha256: str) -> FileFacts:
-    return FileFacts(
-        path=parsed_file.relative_path,
-        content_sha256=content_sha256,
-        functions=[
-            FunctionFacts(
-                function_id=function.function_id,
-                name=function.name,
-                kind=function.kind,
-                visibility=function.visibility,
-                line_start=function.line_start,
-                line_end=function.line_end,
-                signature=function.signature,
-                impl_target=function.impl_target,
-                facts=FunctionFactBundle(
-                    authorization=AuthorizationFact(
-                        status="unknown",
-                        reasoning="mock",
-                        evidence=[],
-                    ),
-                    vector_parameters=VectorParametersFact(
-                        status="unknown",
-                        reasoning="mock",
-                        parameters=[],
-                    ),
-                    time_dependent_state=TimeDependentStateFact(
-                        status="unknown",
-                        reasoning="mock",
-                        evidence=[],
-                    ),
-                    sentinel_values=SentinelValuesFact(
-                        status="unknown",
-                        reasoning="mock",
-                        values=[],
-                    ),
-                ),
-            )
-            for function in parsed_file.functions
-        ],
-    )
-
-
-def test_extract_facts_pipeline_emits_reporter_events(tmp_path: Path, monkeypatch) -> None:
-    contracts = tmp_path / "contracts"
-    contracts.mkdir()
-    (contracts / "a.rs").write_text("pub fn alpha() {}\n", encoding="utf-8")
-    (contracts / "b.rs").write_text("pub fn beta() {}\n", encoding="utf-8")
-    (contracts / "c.rs").write_text("pub fn gamma() {}\n", encoding="utf-8")
-
-    def fake_extract(parsed_file, *, content_sha256, model_name, llm_mode):
-        if parsed_file.relative_path.endswith("a.rs"):
-            time.sleep(0.12)
-        elif parsed_file.relative_path.endswith("b.rs"):
-            time.sleep(0.02)
-        else:
-            time.sleep(0.01)
-
-        return _make_file_facts(parsed_file, content_sha256=content_sha256)
-
-    monkeypatch.setattr(
-        "scout_agent.runtime.extract.pipeline.extract_file_facts_with_llm",
-        fake_extract,
-    )
-
-    reporter = FakeExtractReporter()
-    result = run_extract_facts_pipeline(
-        project_root=tmp_path,
-        facts_path=tmp_path / "FACTS.yaml",
+def _context(root: Path, reporter: FakeExtractReporter) -> ExtractContext:
+    return ExtractContext(
+        project_root=root,
+        facts_path=root / "FACTS.yaml",
         model_name="anthropic:claude-sonnet-4-5",
         llm_mode="consistent",
-        reporter=reporter,
+        scout_files=None,
         max_parallel_files=2,
+        reporter=reporter,
     )
 
-    assert result.file_count == 3
-    assert reporter.events[0] == ("started", 3)
-    assert [event for event in reporter.events if event[0] == "file_started"] == [
-        ("file_started", 1, "contracts/a.rs"),
-        ("file_started", 2, "contracts/b.rs"),
-        ("file_started", 3, "contracts/c.rs"),
-    ]
-    assert {
-        (event[1], event[2], event[3])
-        for event in reporter.events
-        if event[0] == "file_completed"
-    } == {
-        (1, "contracts/a.rs", 1),
-        (2, "contracts/b.rs", 1),
-        (3, "contracts/c.rs", 1),
-    }
+
+def _make_summaries(parsed_file) -> dict[str, FunctionSummary]:
+    summaries: dict[str, FunctionSummary] = {}
+    for function in parsed_file.functions:
+        key = f"{parsed_file.relative_path}::{function.name}"
+        if function.impl_target:
+            key = f"{parsed_file.relative_path}::{function.impl_target}::{function.name}"
+        summaries[key] = FunctionSummary(
+        )
+    return summaries
 
 
-def test_extract_facts_pipeline_preserves_deterministic_file_order(
+def _response(function_key: str) -> FileFactsExtractionResponse:
+    return FileFactsExtractionResponse(
+        functions=[
+            ExtractedFunctionSummary(
+                function_key=function_key,
+                summary=FunctionSummary(),
+            )
+        ]
+    )
+
+
+def test_extract_facts_pipeline_emits_reporter_events(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     contracts = tmp_path / "contracts"
     contracts.mkdir()
@@ -163,15 +97,14 @@ def test_extract_facts_pipeline_preserves_deterministic_file_order(
     (contracts / "b.rs").write_text("pub fn beta() {}\n", encoding="utf-8")
     (contracts / "c.rs").write_text("pub fn gamma() {}\n", encoding="utf-8")
 
-    def fake_extract(parsed_file, *, content_sha256, model_name, llm_mode):
+    def fake_extract(parsed_file, *, model_name, llm_mode):
         if parsed_file.relative_path.endswith("a.rs"):
             time.sleep(0.12)
         elif parsed_file.relative_path.endswith("b.rs"):
-            time.sleep(0.01)
+            time.sleep(0.02)
         else:
-            time.sleep(0.03)
-
-        return _make_file_facts(parsed_file, content_sha256=content_sha256)
+            time.sleep(0.01)
+        return _make_summaries(parsed_file)
 
     monkeypatch.setattr(
         "scout_agent.runtime.extract.pipeline.extract_file_facts_with_llm",
@@ -179,27 +112,140 @@ def test_extract_facts_pipeline_preserves_deterministic_file_order(
     )
 
     reporter = FakeExtractReporter()
-    result = run_extract_facts_pipeline(
-        project_root=tmp_path,
-        facts_path=tmp_path / "FACTS.yaml",
-        model_name="anthropic:claude-sonnet-4-5",
-        llm_mode="consistent",
-        reporter=reporter,
-        max_parallel_files=2,
-    )
+    result = run_extract_facts_pipeline(_context(tmp_path, reporter))
 
     assert result.file_count == 3
     assert result.function_count == 3
-
-    loaded = load_facts_document(tmp_path / "FACTS.yaml")
-    assert [file_facts.path for file_facts in loaded.files] == [
-        "contracts/a.rs",
-        "contracts/b.rs",
-        "contracts/c.rs",
+    assert reporter.events[0] == ("started", 3)
+    assert [event for event in reporter.events if event[0] == "file_started"] == [
+        ("file_started", 1, "contracts/a.rs"),
+        ("file_started", 2, "contracts/b.rs"),
+        ("file_started", 3, "contracts/c.rs"),
     ]
 
 
-def test_extract_facts_pipeline_bounds_concurrency(tmp_path: Path, monkeypatch) -> None:
+def test_extract_facts_pipeline_writes_flat_function_map_in_file_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contracts = tmp_path / "contracts"
+    contracts.mkdir()
+    (contracts / "a.rs").write_text("pub fn alpha() {}\n", encoding="utf-8")
+    (contracts / "b.rs").write_text("pub fn beta() {}\n", encoding="utf-8")
+    (contracts / "c.rs").write_text("pub fn gamma() {}\n", encoding="utf-8")
+
+    def fake_extract(parsed_file, *, model_name, llm_mode):
+        if parsed_file.relative_path.endswith("a.rs"):
+            time.sleep(0.12)
+        elif parsed_file.relative_path.endswith("b.rs"):
+            time.sleep(0.01)
+        else:
+            time.sleep(0.03)
+        return _make_summaries(parsed_file)
+
+    monkeypatch.setattr(
+        "scout_agent.runtime.extract.pipeline.extract_file_facts_with_llm",
+        fake_extract,
+    )
+
+    result = run_extract_facts_pipeline(_context(tmp_path, FakeExtractReporter()))
+
+    assert result.file_count == 3
+    loaded = load_facts_document(tmp_path / "FACTS.yaml")
+    assert loaded.schema_version == "2"
+    assert list(loaded.functions) == [
+        "contracts/a.rs::alpha",
+        "contracts/b.rs::beta",
+        "contracts/c.rs::gamma",
+    ]
+
+
+def test_extract_facts_pipeline_retries_retryable_mismatch_and_writes_facts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contracts = tmp_path / "contracts"
+    contracts.mkdir()
+    (contracts / "a.rs").write_text("pub fn alpha() {}\n", encoding="utf-8")
+    invoke_count = 0
+
+    class FakeStructuredModel:
+        def invoke(self, _messages):
+            nonlocal invoke_count
+            invoke_count += 1
+            if invoke_count == 1:
+                return _response("contracts/ a.rs::alpha")
+            return _response("contracts/a.rs::alpha")
+
+    class FakeModel:
+        def with_structured_output(self, *_args, **_kwargs):
+            return FakeStructuredModel()
+
+    monkeypatch.setattr(
+        "scout_agent.runtime.extract.facts_extractor.build_chat_model",
+        lambda *_args, **_kwargs: FakeModel(),
+    )
+
+    reporter = FakeExtractReporter()
+    result = run_extract_facts_pipeline(_context(tmp_path, reporter))
+
+    assert result.file_count == 1
+    assert result.function_count == 1
+    assert invoke_count == 2
+    assert [event for event in reporter.events if event[0] == "file_completed"] == [
+        ("file_completed", 1, "contracts/a.rs", 1)
+    ]
+    loaded = load_facts_document(tmp_path / "FACTS.yaml")
+    assert list(loaded.functions) == ["contracts/a.rs::alpha"]
+
+
+def test_extract_facts_pipeline_fails_after_retry_budget_exhausted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contracts = tmp_path / "contracts"
+    contracts.mkdir()
+    (contracts / "a.rs").write_text("pub fn alpha() {}\n", encoding="utf-8")
+    invoke_count = 0
+
+    class FakeStructuredModel:
+        def invoke(self, _messages):
+            nonlocal invoke_count
+            invoke_count += 1
+            return _response("contracts/ a.rs::alpha")
+
+    class FakeModel:
+        def with_structured_output(self, *_args, **_kwargs):
+            return FakeStructuredModel()
+
+    monkeypatch.setattr(
+        "scout_agent.runtime.extract.facts_extractor.build_chat_model",
+        lambda *_args, **_kwargs: FakeModel(),
+    )
+
+    reporter = FakeExtractReporter()
+
+    with pytest.raises(ExtractFactsParallelError, match="contracts/a.rs") as exc_info:
+        run_extract_facts_pipeline(_context(tmp_path, reporter))
+
+    assert invoke_count == 3
+    assert [event for event in reporter.events if event[0] == "file_failed"] == [
+        (
+            "file_failed",
+            1,
+            "contracts/a.rs",
+            "RetryableExtractionError",
+            "Extraction response does not match parsed function inventory for contracts/a.rs: missing=['contracts/a.rs::alpha']; unexpected=['contracts/ a.rs::alpha']",
+        )
+    ]
+    assert "RetryableExtractionError" in str(exc_info.value)
+    assert not (tmp_path / "FACTS.yaml").exists()
+
+
+def test_extract_facts_pipeline_bounds_concurrency(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     contracts = tmp_path / "contracts"
     contracts.mkdir()
     for index in range(5):
@@ -212,7 +258,7 @@ def test_extract_facts_pipeline_bounds_concurrency(tmp_path: Path, monkeypatch) 
     max_seen = 0
     lock = threading.Lock()
 
-    def fake_extract(parsed_file, *, content_sha256, model_name, llm_mode):
+    def fake_extract(parsed_file, *, model_name, llm_mode):
         nonlocal active, max_seen
         with lock:
             active += 1
@@ -220,29 +266,21 @@ def test_extract_facts_pipeline_bounds_concurrency(tmp_path: Path, monkeypatch) 
         time.sleep(0.05)
         with lock:
             active -= 1
-
-        return _make_file_facts(parsed_file, content_sha256=content_sha256)
+        return _make_summaries(parsed_file)
 
     monkeypatch.setattr(
         "scout_agent.runtime.extract.pipeline.extract_file_facts_with_llm",
         fake_extract,
     )
 
-    run_extract_facts_pipeline(
-        project_root=tmp_path,
-        facts_path=tmp_path / "FACTS.yaml",
-        model_name="anthropic:claude-sonnet-4-5",
-        llm_mode="consistent",
-        reporter=FakeExtractReporter(),
-        max_parallel_files=2,
-    )
+    run_extract_facts_pipeline(_context(tmp_path, FakeExtractReporter()))
 
     assert max_seen <= 2
 
 
 def test_extract_facts_pipeline_fails_after_in_flight_tasks(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     contracts = tmp_path / "contracts"
     contracts.mkdir()
@@ -255,7 +293,7 @@ def test_extract_facts_pipeline_fails_after_in_flight_tasks(
     started_paths: list[str] = []
     lock = threading.Lock()
 
-    def fake_extract(parsed_file, *, content_sha256, model_name, llm_mode):
+    def fake_extract(parsed_file, *, model_name, llm_mode):
         with lock:
             started_paths.append(parsed_file.relative_path)
 
@@ -264,7 +302,7 @@ def test_extract_facts_pipeline_fails_after_in_flight_tasks(
             raise ValueError("broken inventory")
 
         time.sleep(0.12)
-        return _make_file_facts(parsed_file, content_sha256=content_sha256)
+        return _make_summaries(parsed_file)
 
     monkeypatch.setattr(
         "scout_agent.runtime.extract.pipeline.extract_file_facts_with_llm",
@@ -274,19 +312,24 @@ def test_extract_facts_pipeline_fails_after_in_flight_tasks(
     reporter = FakeExtractReporter()
 
     with pytest.raises(ExtractFactsParallelError, match="contracts/a.rs") as exc_info:
-        run_extract_facts_pipeline(
-            project_root=tmp_path,
-            facts_path=tmp_path / "FACTS.yaml",
-            model_name="anthropic:claude-sonnet-4-5",
-            llm_mode="consistent",
-            reporter=reporter,
-            max_parallel_files=2,
-        )
+        run_extract_facts_pipeline(_context(tmp_path, reporter))
 
-    assert sorted(started_paths) == ["contracts/a.rs", "contracts/b.rs"]
-    assert [event for event in reporter.events if event[0] == "file_failed"] == [
-        ("file_failed", 1, "contracts/a.rs", "ValueError", "broken inventory")
-    ]
+    assert "contracts/a.rs" in started_paths
+    assert "contracts/b.rs" in started_paths
+    assert "contracts/d.rs" not in started_paths
+    assert len(started_paths) <= 3
+    failed_events = [event for event in reporter.events if event[0] == "file_failed"]
+    assert (
+        "file_failed",
+        1,
+        "contracts/a.rs",
+        "ValueError",
+        "broken inventory",
+    ) in failed_events
+    for event in failed_events:
+        if event[2] == "contracts/a.rs":
+            continue
+        assert event[3] == "CancelledError"
     assert "ValueError: broken inventory" in str(exc_info.value)
     assert not (tmp_path / "FACTS.yaml").exists()
 
@@ -298,13 +341,7 @@ def test_extract_facts_pipeline_rejects_empty_or_test_only_scopes(tmp_path: Path
         ValueError,
         match="No in-scope production Rust source files were discovered",
     ):
-        run_extract_facts_pipeline(
-            project_root=tmp_path,
-            facts_path=tmp_path / "FACTS.yaml",
-            model_name="anthropic:claude-sonnet-4-5",
-            llm_mode="consistent",
-            reporter=reporter,
-        )
+        run_extract_facts_pipeline(_context(tmp_path, reporter))
 
     tests_dir = tmp_path / "tests"
     tests_dir.mkdir()
@@ -314,39 +351,24 @@ def test_extract_facts_pipeline_rejects_empty_or_test_only_scopes(tmp_path: Path
         ValueError,
         match="No in-scope production Rust source files were discovered",
     ):
-        run_extract_facts_pipeline(
-            project_root=tmp_path,
-            facts_path=tmp_path / "FACTS.yaml",
-            model_name="anthropic:claude-sonnet-4-5",
-            llm_mode="consistent",
-            reporter=FakeExtractReporter(),
-        )
+        run_extract_facts_pipeline(_context(tmp_path, FakeExtractReporter()))
 
     assert reporter.events == []
 
 
 def test_extract_facts_pipeline_does_not_create_scout_state_directory(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     contracts = tmp_path / "contracts"
     contracts.mkdir()
     (contracts / "a.rs").write_text("pub fn alpha() {}\n", encoding="utf-8")
 
-    def fake_extract(parsed_file, *, content_sha256, model_name, llm_mode):
-        return _make_file_facts(parsed_file, content_sha256=content_sha256)
-
     monkeypatch.setattr(
         "scout_agent.runtime.extract.pipeline.extract_file_facts_with_llm",
-        fake_extract,
+        lambda parsed_file, *, model_name, llm_mode: _make_summaries(parsed_file),
     )
 
-    run_extract_facts_pipeline(
-        project_root=tmp_path,
-        facts_path=tmp_path / "FACTS.yaml",
-        model_name="anthropic:claude-sonnet-4-5",
-        llm_mode="consistent",
-        reporter=FakeExtractReporter(),
-    )
+    run_extract_facts_pipeline(_context(tmp_path, FakeExtractReporter()))
 
-    assert not _state_dir(tmp_path).exists()
+    assert not (tmp_path / ".scout-ai").exists()

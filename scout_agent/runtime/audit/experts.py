@@ -1,226 +1,251 @@
 from __future__ import annotations
 
+from collections.abc import Collection
 from pathlib import Path
-from typing import Collection
+from typing import Any, TypedDict
 
-from langchain_core.messages import (
-    AIMessage,
-    BaseMessage,
-    HumanMessage,
-    SystemMessage,
-    ToolMessage,
-)
+try:
+    from deepagents import CompiledSubAgent
+except ImportError:
 
-from scout_agent.domain.audit import Delegation, ExpertResult, ExpertTypeEnum
-from scout_agent.domain.facts import FileFacts, FunctionFacts
+    class CompiledSubAgent(TypedDict):
+        name: str
+        description: str
+        runnable: Any
+
+
+try:
+    from langchain.agents import create_agent
+except ImportError:
+    create_agent = None
+
+from scout_agent.domain.audit import ExpertResult, ExpertTypeEnum
 from scout_agent.llm.providers import build_chat_model
-from scout_agent.runtime.audit.tools import expert_read_code
-
-MAX_TOOL_ITERATIONS = 5
-
-READ_CODE_TOOL_SCHEMA = {
-    "type": "function",
-    "function": {
-        "name": "read_code",
-        "description": (
-            "Read up to 100 lines of sanitized source code from an in-scope file. "
-            "Use this when the initial code snapshot is insufficient to evaluate "
-            "the delegated concern. You may read any file that is in scope for the audit."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "file": {
-                    "type": "string",
-                    "description": "Relative path to the file (e.g. 'src/lib.rs').",
-                },
-                "start_line": {
-                    "type": "integer",
-                    "description": "First line to read (1-indexed). Defaults to 1.",
-                    "default": 1,
-                },
-                "max_lines": {
-                    "type": "integer",
-                    "description": "Maximum number of lines to return (1-100). Defaults to 100.",
-                    "default": 100,
-                },
-            },
-            "required": ["file"],
-        },
-    },
-}
+from scout_agent.runtime.audit.reporting import PlainAuditProgressReporter
+from scout_agent.runtime.audit.tools import (
+    EXPERT_READ_MAX_LINES,
+    read_sanitized_code_chunk,
+)
 
 BASE_EXPERT_PROMPT = """You are a specialized smart-contract audit expert.
 
-You receive:
-- one narrow delegation from the Supervisor
-- the semantic facts already extracted for the target file
-- a focused code snapshot prepared for this investigation
-- optional cross-file search results
-
-You have access to a `read_code` tool that lets you read up to 100 lines at a time from any in-scope file.
-Use it when the initial code snapshot is insufficient to evaluate the delegated concern.
-Only use the tool when necessary — prefer working with the provided snapshot when it is enough.
+You receive one isolated audit task from a parent agent.
+You have exactly one tool:
+- `read_code_chunk(file, start_line=1, max_lines=100)`
 
 Your job:
 - evaluate only the delegated concern
-- return exactly one ExpertResult
+- return exactly one ExpertResult as structured output
 - return at most one finding
 
 Rules:
 - Do not invent code, files, or behavior.
-- Do not broaden the scope beyond the delegation.
+- Do not broaden the scope beyond the delegated concern.
 - Use status='VULNERABLE' only when the evidence supports a concrete issue.
 - Use status='SAFE' when the delegated concern was checked and no issue was found.
 - Use status='NEEDS_INFO' when the provided context is insufficient to conclude.
 - If status='VULNERABLE', include exactly one finding.
 - If status is 'SAFE' or 'NEEDS_INFO', do not include a finding.
-- Keep descriptions concise and evidence specific.
+- Keep findings concise and evidence specific.
 """
 
 EXECUTION_PATH_CONSISTENCY_PROMPT = """Focus: execution path consistency.
 
 Investigate whether equivalent or related state mutation paths enforce consistent validation.
-This includes mutation backtracking:
-- identify the state mutation in question
-- compare with other mutation paths if search results provide them
-- check for missing authorization, pause checks, threshold checks, or equivalent guards
+Look for missing authorization, pause checks, threshold checks, or equivalent guards.
 """
 
 COLLECTION_VALIDATION_PROMPT = """Focus: collection validation.
 
-Investigate whether vector or array-like inputs require explicit uniqueness validation
-before insertion into state or before mathematical aggregation.
-Look for duplicate-sensitive logic such as vote counting, aggregation, accumulation,
-or repeated insertion of user-controlled elements.
+Investigate whether vector or array-like inputs require uniqueness validation or safe duplicate handling
+before insertion into state or before aggregation.
 """
 
 TIME_STATE_PROMPT = """Focus: time-dependent state.
 
 Investigate whether time-based accrual, settlement, yield, or elapsed-time updates
 must occur before modifying rate-driving or balance-driving state.
-Look for timestamp-driven logic and ordering hazards.
 """
 
 SENTINEL_LOGIC_PROMPT = """Focus: sentinel logic.
 
 Investigate whether sentinel or special-status values such as u32::MAX, None, or 0
 are handled safely by readers, iterators, and processing paths.
-Look for missing branches, unsafe iteration, or logic that accidentally treats a sentinel
-as ordinary business data.
 """
 
 
-def run_expert_analysis(
+def build_expert_subagents(
     *,
-    delegation: Delegation,
-    target_file_facts: FileFacts,
-    code_snapshot: str,
     model_name: str,
     llm_mode: str,
-    search_results: str | None = None,
     project_root: Path,
     allowed_paths: Collection[str],
-) -> ExpertResult:
+    reporter: PlainAuditProgressReporter | None = None,
+    extra_prompt: str | None = None,
+) -> list[CompiledSubAgent]:
+    if create_agent is None:
+        raise ValueError(
+            "langchain is required for expert subagent creation. "
+            "Install project dependencies first."
+        )
+
     model = build_chat_model(model_name, llm_mode)
 
-    messages: list[BaseMessage] = build_expert_messages(
-        delegation=delegation,
-        target_file_facts=target_file_facts,
-        code_snapshot=code_snapshot,
-        search_results=search_results,
-    )
-
-    tool_model = model.bind_tools(
-        [READ_CODE_TOOL_SCHEMA],
-        tool_choice="auto",
-    )
-
-    for _ in range(MAX_TOOL_ITERATIONS):
-        response = tool_model.invoke(messages)
-        messages.append(response)
-
-        if not isinstance(response, AIMessage) or not response.tool_calls:
-            break
-
-        for tool_call in response.tool_calls:
-            tool_result = _execute_read_code_tool(
-                tool_call=tool_call,
-                project_root=project_root,
-                allowed_paths=allowed_paths,
-            )
-            messages.append(
-                ToolMessage(
-                    content=tool_result,
-                    tool_call_id=tool_call["id"],
-                )
-            )
-
-    structured_model = model.with_structured_output(
-        ExpertResult,
-        method="json_schema",
-    )
-    final_response = structured_model.invoke(messages)
-
-    if isinstance(final_response, ExpertResult):
-        return final_response
-
-    return ExpertResult.model_validate(final_response)
-
-
-def _execute_read_code_tool(
-    *,
-    tool_call: dict,
-    project_root: Path,
-    allowed_paths: Collection[str],
-) -> str:
-    if tool_call["name"] != "read_code":
-        return f"Unknown tool: {tool_call['name']}"
-
-    args = tool_call.get("args", {})
-    file_path = args.get("file", "")
-    start_line = args.get("start_line", 1)
-    max_lines = args.get("max_lines", 100)
-
-    try:
-        return expert_read_code(
-            project_root,
-            file_path,
-            allowed_paths=allowed_paths,
-            start_line=start_line,
-            max_lines=max_lines,
-        )
-    except (ValueError, FileNotFoundError) as exc:
-        return f"Error: {exc}"
-
-
-def build_expert_messages(
-    *,
-    delegation: Delegation,
-    target_file_facts: FileFacts,
-    code_snapshot: str,
-    search_results: str | None = None,
-) -> list[BaseMessage]:
-    user_prompt = (
-        f"Expert type: {delegation.expert_type.value}\n"
-        f"Target file: {delegation.target_file}\n"
-        f"Delegation reasoning: {delegation.reasoning}\n"
-        f"Context snippet: {delegation.context_snippet}\n\n"
-        "Function facts for target file:\n"
-        f"{_format_file_facts(target_file_facts)}\n\n"
-        "Focused code snapshot:\n"
-        f"{code_snapshot}\n\n"
-        "Cross-file search results:\n"
-        f"{_format_search_results(search_results)}\n"
-    )
-
     return [
-        SystemMessage(content=_system_prompt_for_expert(delegation.expert_type)),
-        HumanMessage(content=user_prompt),
+        {
+            "name": expert_type.value,
+            "description": _description_for_expert(expert_type),
+            "runnable": _maybe_wrap_runnable_with_logging(
+                create_agent(
+                    model=model,
+                    system_prompt=_system_prompt_for_expert(
+                        expert_type,
+                        extra_prompt=extra_prompt,
+                    ),
+                    tools=[
+                        _build_read_code_chunk_tool(
+                            project_root=project_root,
+                            allowed_paths=allowed_paths,
+                            expert_name=expert_type.value,
+                            reporter=reporter,
+                        )
+                    ],
+                    response_format=ExpertResult,
+                    name=expert_type.value,
+                ),
+                expert_name=expert_type.value,
+                reporter=reporter,
+            ),
+        }
+        for expert_type in ExpertTypeEnum
     ]
 
 
-def _system_prompt_for_expert(expert_type: ExpertTypeEnum) -> str:
+def _build_read_code_chunk_tool(
+    *,
+    project_root: Path,
+    allowed_paths: Collection[str],
+    expert_name: str,
+    reporter: PlainAuditProgressReporter | None = None,
+) -> Any:
+    def read_code_chunk(
+        file: str,
+        start_line: int = 1,
+        max_lines: int = EXPERT_READ_MAX_LINES,
+    ) -> str:
+        """Read up to 100 lines of sanitized source code from an in-scope file."""
+
+        if reporter is not None:
+            reporter.tool_used(
+                tool_name="read_code_chunk",
+                target=file,
+                expert_name=expert_name,
+                line_start=start_line,
+                line_end=start_line + max_lines - 1,
+            )
+        try:
+            return read_sanitized_code_chunk(
+                project_root,
+                file,
+                allowed_paths=allowed_paths,
+                start_line=start_line,
+                max_lines=max_lines,
+            )
+        except (ValueError, FileNotFoundError) as exc:
+            if reporter is not None:
+                reporter.tool_denied(
+                    tool_name="read_code_chunk",
+                    target=file,
+                    current_file=file,
+                    reason=str(exc),
+                    expert_name=expert_name,
+                )
+            return f"Error: {exc}"
+
+    return read_code_chunk
+
+
+class _LoggingRunnable:
+    def __init__(
+        self,
+        runnable: Any,
+        *,
+        expert_name: str,
+        reporter: PlainAuditProgressReporter,
+    ) -> None:
+        self._runnable = runnable
+        self._expert_name = expert_name
+        self._reporter = reporter
+
+    def _log_spawn(self) -> None:
+        self._reporter.expert_spawned(expert_name=self._expert_name)
+
+    def __call__(self, *args, **kwargs):
+        self._log_spawn()
+        return self._runnable(*args, **kwargs)
+
+    def invoke(self, *args, **kwargs):
+        self._log_spawn()
+        return self._runnable.invoke(*args, **kwargs)
+
+    async def ainvoke(self, *args, **kwargs):
+        self._log_spawn()
+        return await self._runnable.ainvoke(*args, **kwargs)
+
+    def stream(self, *args, **kwargs):
+        self._log_spawn()
+        return self._runnable.stream(*args, **kwargs)
+
+    async def astream(self, *args, **kwargs):
+        self._log_spawn()
+        return await self._runnable.astream(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._runnable, name)
+
+
+def _maybe_wrap_runnable_with_logging(
+    runnable: Any,
+    *,
+    expert_name: str,
+    reporter: PlainAuditProgressReporter | None,
+) -> Any:
+    if reporter is None:
+        return runnable
+    return _LoggingRunnable(
+        runnable,
+        expert_name=expert_name,
+        reporter=reporter,
+    )
+
+
+def _description_for_expert(expert_type: ExpertTypeEnum) -> str:
+    if expert_type == ExpertTypeEnum.EXECUTION_PATH_CONSISTENCY:
+        return "Audit state mutation paths for inconsistent validation or authorization."
+    if expert_type == ExpertTypeEnum.COLLECTION_VALIDATION:
+        return "Audit vector or array inputs for missing uniqueness or duplicate-safe validation."
+    if expert_type == ExpertTypeEnum.TIME_STATE:
+        return "Audit time-dependent state transitions and ordering."
+    if expert_type == ExpertTypeEnum.SENTINEL_LOGIC:
+        return "Audit sentinel and special-status value handling."
+    raise ValueError(f"Unsupported expert type: {expert_type}")
+
+
+def _append_extra_prompt(base_prompt: str, extra_prompt: str | None) -> str:
+    if extra_prompt is None or not extra_prompt.strip():
+        return base_prompt
+    return (
+        f"{base_prompt}\n\n"
+        "Additional audit instructions:\n"
+        f"{extra_prompt.strip()}\n"
+    )
+
+
+def _system_prompt_for_expert(
+    expert_type: ExpertTypeEnum,
+    *,
+    extra_prompt: str | None = None,
+) -> str:
     prompt_parts = [BASE_EXPERT_PROMPT]
 
     if expert_type == ExpertTypeEnum.EXECUTION_PATH_CONSISTENCY:
@@ -234,36 +259,4 @@ def _system_prompt_for_expert(expert_type: ExpertTypeEnum) -> str:
     else:
         raise ValueError(f"Unsupported expert type: {expert_type}")
 
-    return "\n\n".join(prompt_parts)
-
-
-def _format_file_facts(file_facts: FileFacts) -> str:
-    if not file_facts.functions:
-        return "- No functions discovered in this file."
-
-    return "\n".join(
-        _format_function_facts(function) for function in file_facts.functions
-    )
-
-
-def _format_function_facts(function: FunctionFacts) -> str:
-    impl_part = f", impl_target={function.impl_target}" if function.impl_target else ""
-    return (
-        f"- function_id={function.function_id}, "
-        f"name={function.name}, "
-        f"kind={function.kind}, "
-        f"visibility={function.visibility}, "
-        f"lines={function.line_start}-{function.line_end}"
-        f"{impl_part}, "
-        f"signature={function.signature}, "
-        f"authorization={function.facts.authorization.status}, "
-        f"vector_parameters={function.facts.vector_parameters.status}, "
-        f"time_dependent_state={function.facts.time_dependent_state.status}, "
-        f"sentinel_values={function.facts.sentinel_values.status}"
-    )
-
-
-def _format_search_results(search_results: str | None) -> str:
-    if search_results is None or not search_results.strip():
-        return "No cross-file search results provided."
-    return search_results.strip()
+    return _append_extra_prompt("\n\n".join(prompt_parts), extra_prompt)

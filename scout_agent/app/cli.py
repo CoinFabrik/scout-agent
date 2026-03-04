@@ -46,6 +46,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional output path for REPORT.md (default: <project_root>/REPORT.md).",
     )
+    audit_parser.add_argument(
+        "--extra-prompt",
+        default=None,
+        help="Optional .txt file whose contents are appended to supervisor and expert prompts.",
+    )
 
     return parser
 

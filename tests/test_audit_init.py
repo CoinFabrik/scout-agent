@@ -23,7 +23,7 @@ def test_audit_init_rejects_test_only_projects(tmp_path: Path) -> None:
             model="anthropic:claude-sonnet-4-5",
             llm_mode="consistent",
             scope_fingerprint="abc123",
-            files=[],
+            functions={},
         ),
     )
 

@@ -10,7 +10,7 @@ DEFAULT_FACTS_FILENAME: Final[str] = "FACTS.yaml"
 DEFAULT_REPORT_FILENAME: Final[str] = "REPORT.md"
 MODEL_ENV_VAR: Final[str] = "SCOUT_MODEL"
 DEFAULT_MAX_PARALLEL_FILES: Final[int] = 4
-MAX_MAX_PARALLEL_FILES: Final[int] = 32
+MAX_MAX_PARALLEL_FILES: Final[int] = 100
 
 
 def resolve_project_root(raw_path: str) -> Path:
@@ -40,6 +40,29 @@ def resolve_report_path(project_root: Path, override: str | None) -> Path:
     )
 
 
+def resolve_extra_prompt_text(project_root: Path, override: str | None) -> str | None:
+    if override is None or not override.strip():
+        return None
+
+    raw = Path(override).expanduser()
+    prompt_path = raw.resolve() if raw.is_absolute() else (project_root / raw).resolve()
+
+    if not prompt_path.exists():
+        raise FileNotFoundError(f"Extra prompt file does not exist: {prompt_path}")
+    if prompt_path.is_symlink():
+        raise ValueError(f"Refusing to load symlinked extra prompt file: {prompt_path}")
+    if not prompt_path.is_file():
+        raise ValueError(f"Extra prompt path must be a file: {prompt_path}")
+    if prompt_path.suffix.lower() != ".txt":
+        raise ValueError(f"--extra-prompt must point to a .txt file: {prompt_path}")
+
+    prompt_text = prompt_path.read_text(encoding="utf-8").strip()
+    if not prompt_text:
+        raise ValueError(f"Extra prompt file is empty: {prompt_path}")
+
+    return prompt_text
+
+
 def resolve_model_name(
     cli_value: str | None,
     *,
@@ -63,11 +86,7 @@ def resolve_model_name(
 
 
 def resolve_llm_mode(mode: str | None, *, fallback: str | None = None) -> str:
-    return (
-        normalize_llm_mode(mode)
-        or normalize_llm_mode(fallback)
-        or DEFAULT_LLM_MODE
-    )
+    return normalize_llm_mode(mode) or normalize_llm_mode(fallback) or DEFAULT_LLM_MODE
 
 
 def resolve_max_parallel_files(

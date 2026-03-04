@@ -110,6 +110,64 @@ class PlainAuditProgressReporter:
             flush=True,
         )
 
+    def expert_spawned(
+        self,
+        *,
+        expert_name: str,
+    ) -> None:
+        print(
+            f"Spawning expert: {expert_name}",
+            file=self._stdout,
+            flush=True,
+        )
+
+    def tool_used(
+        self,
+        *,
+        tool_name: str,
+        target: str,
+        expert_name: str | None = None,
+        line_start: int | None = None,
+        line_end: int | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+    ) -> None:
+        actor = expert_name if expert_name is not None else "supervisor"
+        parts = [
+            f"actor={actor}",
+            f"tool={tool_name}",
+            f"target={target}",
+        ]
+        if line_start is not None and line_end is not None:
+            parts.append(f"lines={line_start}-{line_end}")
+        if offset is not None:
+            parts.append(f"offset={offset}")
+        if limit is not None:
+            parts.append(f"limit={limit}")
+        print(
+            "Tool used: " + " ".join(parts),
+            file=self._stdout,
+            flush=True,
+        )
+
+    def tool_denied(
+        self,
+        *,
+        tool_name: str,
+        target: str,
+        current_file: str,
+        reason: str,
+        expert_name: str | None = None,
+    ) -> None:
+        actor = expert_name if expert_name is not None else "supervisor"
+        print(
+            "Tool denied: "
+            f"actor={actor} tool={tool_name} target={target} "
+            f"current={current_file} reason={reason}",
+            file=self._stdout,
+            flush=True,
+        )
+
     def close(self) -> None:
         if self._closed:
             return

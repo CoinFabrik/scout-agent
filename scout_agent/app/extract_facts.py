@@ -22,6 +22,8 @@ def run_extract_facts_command(
     facts_path = resolve_facts_path(project_root, args.facts_path)
     scout_config = load_default_scout_config(project_root)
 
+    # This resolve operations could be reworked, moved into CLI parsing, etc..
+    # But for now, this is a good place to start.
     model_name = resolve_model_name(
         args.model,
         fallback=scout_config.model if scout_config else None,
