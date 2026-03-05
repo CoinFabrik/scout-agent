@@ -1,9 +1,73 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TextIO
+from typing import Protocol, TextIO
 
 from scout_agent.domain.audit import Finding
+
+
+class AuditProgressReporter(Protocol):
+    def started(
+        self,
+        *,
+        project_root: Path,
+        total_files: int,
+        model_name: str,
+        llm_mode: str,
+    ) -> None: ...
+
+    def file_started(
+        self,
+        *,
+        index: int,
+        total: int,
+        current_file: str,
+    ) -> None: ...
+
+    def finding_verified(
+        self,
+        *,
+        total_verified_findings: int,
+        finding: Finding,
+    ) -> None: ...
+
+    def file_completed(
+        self,
+        *,
+        reviewed: int,
+        total: int,
+        current_file: str,
+    ) -> None: ...
+
+    def expert_spawned(
+        self,
+        *,
+        expert_name: str,
+    ) -> None: ...
+
+    def tool_used(
+        self,
+        *,
+        tool_name: str,
+        target: str,
+        expert_name: str | None = None,
+        line_start: int | None = None,
+        line_end: int | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+    ) -> None: ...
+
+    def tool_denied(
+        self,
+        *,
+        tool_name: str,
+        target: str,
+        current_file: str,
+        reason: str,
+        expert_name: str | None = None,
+    ) -> None: ...
+
+    def close(self) -> None: ...
 
 
 class PlainAuditProgressReporter:

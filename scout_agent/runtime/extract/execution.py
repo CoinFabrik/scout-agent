@@ -3,11 +3,12 @@ from __future__ import annotations
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 from scout_agent.domain.facts import FunctionSummary
 from scout_agent.runtime.extract.models import (
     ExtractFactsParallelError,
+    ExtractProgressReporter,
     FileExtractionFailure,
 )
 from scout_agent.runtime.source.discovery import DiscoveredRustFile
@@ -55,7 +56,7 @@ def build_tasks(discovered_files: list[DiscoveredRustFile]) -> list[ExtractTask]
 def execute_extract_tasks(
     *,
     tasks: list[ExtractTask],
-    reporter: Any,
+    reporter: ExtractProgressReporter,
     model_name: str,
     llm_mode: str,
     max_parallel_files: int,

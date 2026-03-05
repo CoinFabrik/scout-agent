@@ -227,6 +227,44 @@ def test_runtime_progress_handler_reports_expert_tool_success_from_metadata() ->
     assert reporter.denied == []
 
 
+def test_runtime_progress_handler_reports_expert_tool_success_from_parent_run() -> None:
+    reporter = FakeReporter()
+    handler = _handler(reporter=reporter)
+
+    expert_run_id = uuid4()
+    tool_run_id = uuid4()
+
+    handler.on_chain_start(
+        {"id": ["langgraph", "node", "time_state"]},
+        {},
+        run_id=expert_run_id,
+    )
+    handler.on_tool_start(
+        {"name": "read_code_chunk"},
+        "",
+        run_id=tool_run_id,
+        parent_run_id=expert_run_id,
+        inputs={"file": "contracts/gateway.rs", "start_line": 4, "max_lines": 2},
+    )
+    handler.on_tool_end(
+        "ok",
+        run_id=tool_run_id,
+        parent_run_id=expert_run_id,
+    )
+
+    assert reporter.used == [
+        {
+            "tool_name": "read_code_chunk",
+            "target": "contracts/gateway.rs",
+            "expert_name": "time_state",
+            "line_start": 4,
+            "line_end": 5,
+            "offset": None,
+            "limit": None,
+        }
+    ]
+
+
 def test_runtime_progress_handler_reports_tool_denial_from_error_output() -> None:
     reporter = FakeReporter()
     handler = _handler(reporter=reporter)
@@ -252,6 +290,36 @@ def test_runtime_progress_handler_reports_tool_denial_from_error_output() -> Non
             "current_file": "/contracts/gateway.rs",
             "reason": "File is outside FACTS scope: contracts/other.rs",
             "expert_name": "unknown_subagent",
+        }
+    ]
+
+
+def test_runtime_progress_handler_keeps_supervisor_tools_unattributed() -> None:
+    reporter = FakeReporter()
+    handler = _handler(reporter=reporter)
+
+    tool_run_id = uuid4()
+
+    handler.on_tool_start(
+        {"name": "read_file"},
+        "",
+        run_id=tool_run_id,
+        inputs={"file": "contracts/gateway.rs", "offset": 10},
+    )
+    handler.on_tool_end(
+        "ok",
+        run_id=tool_run_id,
+    )
+
+    assert reporter.used == [
+        {
+            "tool_name": "read_file",
+            "target": "contracts/gateway.rs",
+            "expert_name": None,
+            "line_start": None,
+            "line_end": None,
+            "offset": 10,
+            "limit": None,
         }
     ]
 

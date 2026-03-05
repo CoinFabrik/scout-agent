@@ -26,7 +26,7 @@ from scout_agent.runtime.audit.experts import (
     build_expert_subagents,
 )
 from scout_agent.runtime.audit.prompt_utils import append_extra_prompt
-from scout_agent.runtime.audit.reporting import PlainAuditProgressReporter
+from scout_agent.runtime.audit.reporting import AuditProgressReporter
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class AuditContext:
     facts_document: FactsDocument
     model_name: str
     llm_mode: str
-    reporter: PlainAuditProgressReporter
+    reporter: AuditProgressReporter
     initial_state: AuditState
     extra_prompt: str | None = None
 

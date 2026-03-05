@@ -5,11 +5,10 @@ from collections.abc import Sequence
 
 from dotenv import load_dotenv
 
-from scout_agent.llm.providers import ProviderError
-
 from .audit import run_audit_command
 from .cli import parse_args
 from .console_reporting import ConsoleOutput
+from .errors import CommandError
 from .extract_facts import run_extract_facts_command
 
 
@@ -25,10 +24,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "audit":
             return run_audit_command(args, output=output)
 
-        output.print_error(f"Unknown command: {args.command}")
-        return 1
-    except (FileNotFoundError, ValueError, ProviderError) as exc:
+        raise CommandError(f"Unknown command: {args.command}")
+    except CommandError as exc:
         output.print_error(str(exc))
+        return 1
+    except KeyboardInterrupt:
+        return 130
+    except Exception as exc:
+        output.print_error(f"unexpected {type(exc).__name__}: {exc}")
         return 1
 
 

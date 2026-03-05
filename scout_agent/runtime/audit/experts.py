@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from deepagents import CompiledSubAgent
 from langchain.agents import create_agent
@@ -112,7 +111,7 @@ def _build_read_code_chunk_tool(
     *,
     project_root: Path,
     allowed_paths: Collection[str],
-) -> Any:
+) -> Callable[..., str]:
     def read_code_chunk(
         file: str,
         start_line: int = 1,

@@ -6,6 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from scout_agent.app.errors import CommandError
 from scout_agent.app.main import main
 from scout_agent.domain.audit import AuditState
 from scout_agent.domain.facts import FactsDocument
@@ -244,3 +245,54 @@ def test_main_routes_errors_through_output_object(tmp_path: Path) -> None:
 
     assert exit_code == 1
     assert "Error:" in stderr.getvalue()
+
+
+def test_main_renders_command_error_without_traceback() -> None:
+    stderr = StringIO()
+
+    with (
+        patch(
+            "scout_agent.app.main.run_audit_command",
+            side_effect=CommandError("bad input"),
+        ),
+        patch("sys.stderr", stderr),
+    ):
+        exit_code = main(["audit", "/tmp/project"])
+
+    assert exit_code == 1
+    assert stderr.getvalue().strip() == "Error: bad input"
+    assert "Traceback" not in stderr.getvalue()
+
+
+def test_main_renders_unexpected_exception_without_traceback() -> None:
+    stderr = StringIO()
+
+    with (
+        patch(
+            "scout_agent.app.main.run_audit_command",
+            side_effect=RuntimeError("boom"),
+        ),
+        patch("sys.stderr", stderr),
+    ):
+        exit_code = main(["audit", "/tmp/project"])
+
+    assert exit_code == 1
+    assert stderr.getvalue().strip() == "Error: unexpected RuntimeError: boom"
+    assert "Traceback" not in stderr.getvalue()
+
+
+def test_main_returns_130_for_keyboard_interrupt() -> None:
+    with patch(
+        "scout_agent.app.main.run_extract_facts_command",
+        side_effect=KeyboardInterrupt,
+    ):
+        exit_code = main(
+            [
+                "extract-facts",
+                "/tmp/project",
+                "--model",
+                "anthropic:claude-sonnet-4-5",
+            ]
+        )
+
+    assert exit_code == 130

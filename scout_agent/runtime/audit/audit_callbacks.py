@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping, Set
 from typing import Any
 from uuid import UUID
 
 from langchain_core.callbacks.base import BaseCallbackHandler
-from scout_agent.runtime.audit.reporting import PlainAuditProgressReporter
+from scout_agent.runtime.audit.reporting import AuditProgressReporter
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +27,7 @@ class RuntimeProgressHandler(BaseCallbackHandler):
     def __init__(
         self,
         *,
-        reporter: PlainAuditProgressReporter,
+        reporter: AuditProgressReporter,
         expert_names: set[str],
         current_file: str,
     ) -> None:
@@ -39,7 +40,7 @@ class RuntimeProgressHandler(BaseCallbackHandler):
 
     def on_chain_start(
         self,
-        serialized: dict[str, Any],
+        serialized: dict[str, Any] | None,
         inputs: dict[str, Any],
         *,
         run_id: UUID,
@@ -48,7 +49,11 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
-        expert_name = (metadata or {}).get("lc_agent_name", "unknown_subagent")
+        expert_name = _resolve_expert_name(
+            expert_names=self._expert_names,
+            metadata=metadata,
+            serialized=serialized,
+        )
         if expert_name not in self._expert_names:
             return
 
@@ -85,7 +90,7 @@ class RuntimeProgressHandler(BaseCallbackHandler):
 
     def on_tool_start(
         self,
-        serialized: dict[str, Any],
+        serialized: dict[str, Any] | None,
         input_str: str,
         *,
         run_id: UUID,
@@ -95,8 +100,20 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         inputs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
-        expert_name = (metadata or {}).get("lc_agent_name", "unknown_subagent")
-        tool_name = serialized.get("name", "unknown_tool")
+        expert_name = _resolve_expert_name(
+            expert_names=self._expert_names,
+            metadata=metadata,
+            serialized=serialized,
+            parent_run_id=parent_run_id,
+            run_to_expert=self._run_to_expert,
+        )
+        tool_name = (
+            serialized.get("name", "unknown_tool")
+            if isinstance(serialized, dict)
+            else "unknown_tool"
+        )
+        if expert_name == "unknown_subagent" and not _is_expert_tool(tool_name):
+            expert_name = None
 
         safe_inputs = inputs if isinstance(inputs, dict) else {}
         target = _resolve_tool_target(
@@ -202,3 +219,64 @@ def _ensure_leading_slash(path: str) -> str:
     if cleaned.startswith("/"):
         return cleaned
     return f"/{cleaned}"
+
+
+def _resolve_expert_name(
+    *,
+    expert_names: Set[str],
+    metadata: Mapping[str, Any] | None,
+    serialized: Mapping[str, Any] | None,
+    parent_run_id: UUID | None = None,
+    run_to_expert: Mapping[UUID, str] | None = None,
+) -> str:
+    for candidate in (
+        _candidate_from_metadata(metadata),
+        _candidate_from_serialized_name(serialized),
+        _candidate_from_serialized_id(serialized),
+    ):
+        if candidate in expert_names:
+            return candidate
+
+    if parent_run_id is not None and run_to_expert is not None:
+        parent_candidate = run_to_expert.get(parent_run_id)
+        if parent_candidate in expert_names:
+            return parent_candidate
+
+    return "unknown_subagent"
+
+
+def _candidate_from_metadata(metadata: Mapping[str, Any] | None) -> str | None:
+    if metadata is None:
+        return None
+    return _coerce_non_empty_string(metadata.get("lc_agent_name"))
+
+
+def _candidate_from_serialized_name(
+    serialized: Mapping[str, Any] | None,
+) -> str | None:
+    if serialized is None:
+        return None
+    return _coerce_non_empty_string(serialized.get("name"))
+
+
+def _candidate_from_serialized_id(serialized: Mapping[str, Any] | None) -> str | None:
+    if serialized is None:
+        return None
+
+    raw_id = serialized.get("id")
+    if not isinstance(raw_id, list) or not raw_id:
+        return None
+
+    trailing = raw_id[-1]
+    return _coerce_non_empty_string(trailing)
+
+
+def _coerce_non_empty_string(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _is_expert_tool(tool_name: str) -> bool:
+    return tool_name == "read_code_chunk"

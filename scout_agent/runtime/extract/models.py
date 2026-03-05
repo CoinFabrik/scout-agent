@@ -2,10 +2,47 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Protocol
 
-if TYPE_CHECKING:
-    from scout_agent.runtime.extract.reporting import PlainExtractProgressReporter
+
+class ExtractProgressReporter(Protocol):
+    def started(
+        self,
+        *,
+        project_root: Path,
+        total_files: int,
+        model_name: str,
+        llm_mode: str,
+    ) -> None: ...
+
+    def file_started(
+        self,
+        *,
+        index: int,
+        total: int,
+        relative_path: str,
+    ) -> None: ...
+
+    def file_completed(
+        self,
+        *,
+        index: int,
+        total: int,
+        relative_path: str,
+        function_count: int,
+    ) -> None: ...
+
+    def file_failed(
+        self,
+        *,
+        index: int,
+        total: int,
+        relative_path: str,
+        error_type: str,
+        message: str,
+    ) -> None: ...
+
+    def close(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,7 +53,7 @@ class ExtractContext:
     llm_mode: str
     scout_files: list[str] | None
     max_parallel_files: int
-    reporter: PlainExtractProgressReporter
+    reporter: ExtractProgressReporter
 
 
 @dataclass(frozen=True, slots=True)
