@@ -6,7 +6,10 @@ from scout_agent.domain.audit import AuditState, FileAuditResponse, Finding
 from scout_agent.domain.facts import FactsDocument, FunctionSummary
 from scout_agent.runtime.audit.audit_backend import FileScopedAuditBackend
 from scout_agent.runtime.audit.audit_callbacks import RuntimeProgressHandler
-from scout_agent.runtime.audit.audit_prompts import build_parent_audit_prompt
+from scout_agent.runtime.audit.audit_prompts import (
+    build_parent_audit_prompt,
+    build_parent_system_prompt,
+)
 from scout_agent.runtime.audit.graph import AuditContext, run_audit
 
 
@@ -384,8 +387,8 @@ def test_file_scoped_backend_forwards_supervisor_read_limit(
     assert observed["limit"] == 5000
 
 
-def test_build_parent_audit_prompt_handles_missing_current_file_facts() -> None:
-    prompt = build_parent_audit_prompt(
+def test_build_parent_system_prompt_includes_facts() -> None:
+    prompt = build_parent_system_prompt(
         current_file="contracts/plain.rs",
         current_file_facts={},
         all_facts={
@@ -398,12 +401,13 @@ def test_build_parent_audit_prompt_handles_missing_current_file_facts() -> None:
         },
     )
 
+    assert "## Context Facts" in prompt
     assert "No extracted function facts for this file." in prompt
     assert "contracts/gateway.rs::vote" in prompt
 
 
-def test_build_parent_audit_prompt_omits_absent_fact_categories() -> None:
-    prompt = build_parent_audit_prompt(
+def test_build_parent_system_prompt_omits_absent_fact_categories() -> None:
+    prompt = build_parent_system_prompt(
         current_file="contracts/validator.rs",
         current_file_facts={
             "contracts/validator.rs::require_nonnegative": FunctionSummary(
@@ -420,14 +424,13 @@ def test_build_parent_audit_prompt_omits_absent_fact_categories() -> None:
     assert "authorization=" not in prompt
 
 
-def test_build_parent_audit_prompt_appends_extra_prompt() -> None:
+def test_build_parent_audit_prompt_contains_instructions() -> None:
     prompt = build_parent_audit_prompt(
         current_file="contracts/validator.rs",
-        current_file_facts={},
-        all_facts={},
         extra_prompt="Never assume cross-contract calls are trusted.",
     )
 
+    assert "Audit the current file: contracts/validator.rs" in prompt
     assert "Additional audit instructions:" in prompt
     assert "Never assume cross-contract calls are trusted." in prompt
 
