@@ -18,26 +18,164 @@ from scout_agent.runtime.audit.tools import (
 
 EXECUTION_PATH_CONSISTENCY_PROMPT = """Focus: execution path consistency.
 
-Investigate whether equivalent or related state mutation paths enforce consistent validation.
-Look for missing authorization, pause checks, threshold checks, or equivalent guards.
+A RESTRICTION can be BYPASSED through a different code path that performs 
+the SAME OPERATION or contains the restricted operation.
+
+Two scenarios to check:
+
+**Scenario 1 - Function Containment:**
+- Function A has a restriction (authorization, pause check, rate limit, etc.)
+- Function B appears to do a different operation but internally calls or contains Function A
+- By calling Function B, users bypass Function A's restriction
+
+**Scenario 2 - Same Operation, Inconsistent Paths:**
+- Function A and Function B perform the SAME operation
+- Function A has restriction R
+- Function B does NOT have restriction R
+- Users can bypass restriction via the unrestricted path
+
+**Auditing Strategy:**
+To find inconsistencies, do not just compare similar-looking functions. Instead:
+1. Identify a sensitive state change (e.g., updating a user's debt or balance).
+2. Find the "primary" function that performs this change and note its restrictions (e.g., "Must not be paused").
+3. Search the entire codebase for all other functions that perform that same state change.
+4. Verify if any identified path skips the restrictions found in the primary function.
+
+What NOT to report:
+- A function with NO restrictions at all (that's just "missing restriction")
+
+**Examples:**
+
+```rust
+// Scenario 1 - Function Containment
+// Function A - WITH restriction
+fn withdraw(amount: i128) {
+    require(!is_paused());  // ✓ Blocked when paused
+    balances.subtract(amount);
+}
+
+// Function B - DIFFERENT operation but contains Function A's logic
+fn swap_and_withdraw(token: Address, amount: i128) {
+    swap(token, amount);
+    // Contains withdraw logic WITHOUT pause check!
+    balances.subtract(amount);  // Bypasses pause!
+}
+
+// Scenario 2 - Same Operation, Inconsistent Paths
+fn transfer(to: Address, amount: i128) {
+    require_auth();  // ✓ Validates caller
+    balances.transfer(&to, amount);
+}
+
+fn transfer_batch(transfers: Vec<(Address, i128)>) {
+    // Same operation but NO auth check!
+    for t in transfers {
+        balances.transfer(&t.0, t.1);  // Inconsistent!
+    }
+}
+```
 """
 
-COLLECTION_VALIDATION_PROMPT = """Focus: collection validation.
+COLLECTION_VALIDATION_PROMPT = """Focus: array duplicate validation.
 
-Investigate whether vector or array-like inputs require uniqueness validation or safe duplicate handling
-before insertion into state or before aggregation.
+Validate no duplicate elements in arrays/vectors that could cause inflated calculations.
+
+**Example:**
+```rust
+// VULNERABLE: Voting with duplicate tokens
+fn vote(token_ids: Vec<Address>, proposal_id: u32, votes: Vec<i128>) {
+    let mut votes_for = 0;
+    for i in 0..token_ids.len() {
+        // Same token counted multiple times if duplicate in token_ids
+        votes_for += votes[i];  
+    }
+    // Bug: Duplicate token_ids inflate vote count
+}
+
+// SAFE version:
+fn vote_safe(token_ids: Vec<Address>, proposal_id: u32, votes: Vec<i128>) {
+    let mut votes_for = 0;
+    // Check for duplicates first
+    require(!has_duplicates(&token_ids));  // ✓ Validates no duplicates
+    for i in 0..token_ids.len() {
+        votes_for += votes[i];
+    }
+}
+```
 """
 
-TIME_STATE_PROMPT = """Focus: time-dependent state.
+TIME_STATE_PROMPT = """Focus: time-dependent state update order.
 
-Investigate whether time-based accrual, settlement, yield, or elapsed-time updates
-must occur before modifying rate-driving or balance-driving state.
+State changes affecting time-dependent logic must trigger update BEFORE modification.
+
+**Example:**
+```rust
+// User has staked tokens earning rewards over time
+// Rewards accrue based on time elapsed since last claim
+
+// VULNERABLE: Rewards lost on withdrawal
+fn withdraw(user: Address, amount: i128) -> i128 {
+    let mut stake = stakes.get(&user);
+    
+    // First: Withdraw principal (BUG!)
+    stake.amount -= amount;
+    stakes.set(&user, stake);
+    
+    // Then: Update timestamp (TOO LATE!)
+    stake.last_update = e.ledger().timestamp();
+    stakes.set(&user, stake);
+    
+    // Problem: Accrued rewards between last_update and now are LOST
+    // Should have called accrue() BEFORE modifying state
+    return amount;
+}
+
+// SAFE version:
+fn withdraw_safe(user: Address, amount: i128) -> i128 {
+    let mut stake = stakes.get(&user);
+    
+    // First: Accrue rewards up to current time
+    let accrued = accrue(&stake, e.ledger().timestamp());
+    stake.accrued_rewards += accrued;
+    
+    // Then: Update timestamp
+    stake.last_update = e.ledger().timestamp();
+    
+    // Then: Modify state
+    stake.amount -= amount;
+    stakes.set(&user, stake);
+    
+    return amount;
+}
+```
 """
 
-SENTINEL_LOGIC_PROMPT = """Focus: sentinel logic.
+SENTINEL_LOGIC_PROMPT = """Focus: sentinel value handling.
 
-Investigate whether sentinel or special-status values such as u32::MAX, None, or 0
-are handled safely by readers, iterators, and processing paths.
+Verify sentinel values (0, u32::MAX, etc.) marking disabled/uninitialized are
+handled by all functions.
+
+**Example:**
+```rust
+// Using u32::MAX to mark "no reserve assigned"
+struct UserPosition {
+    reserve_index: u32,  // u32::MAX = "not set"
+}
+
+// VULNERABLE: Missing sentinel check
+fn get_reserve_unchecked(pos: UserPosition) -> Reserve {
+    return reserves.get(&pos.reserve_index);  // BUG: No sentinel check
+    // If reserve_index is u32::MAX, reads invalid storage key
+}
+
+// SAFE version:
+fn get_reserve_safe(pos: UserPosition) -> Option<Reserve> {
+    if pos.reserve_index == u32::MAX {
+        return None;  // ✓ Explicitly handles sentinel
+    }
+    return reserves.get(&pos.reserve_index);
+}
+```
 """
 
 
