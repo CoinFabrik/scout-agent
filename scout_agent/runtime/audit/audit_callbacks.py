@@ -150,13 +150,9 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             return
 
         if isinstance(output, str) and output.startswith("Error:"):
-            reason = output.removeprefix("Error:").strip()
-            self._reporter.tool_denied(
-                tool_name=context.tool_name,
-                target=context.target,
-                current_file=context.current_file,
-                reason=reason,
-                expert_name=context.expert_name,
+            self._report_tool_denied(
+                context=context,
+                reason=output.removeprefix("Error:").strip(),
             )
             return
 
@@ -170,6 +166,24 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             limit=context.limit,
         )
 
+    def on_tool_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        **kwargs: Any,
+    ) -> None:
+        _ = (parent_run_id, kwargs)
+        context = self._tool_runs.pop(run_id, None)
+        if context is None:
+            return
+
+        self._report_tool_denied(
+            context=context,
+            reason=_tool_error_reason(error),
+        )
+
     def _finish_expert_run(self, run_id: UUID) -> None:
         expert_name = self._run_to_expert.pop(run_id, None)
         if expert_name is None:
@@ -179,6 +193,20 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             return
 
         self._active_experts.discard(expert_name)
+
+    def _report_tool_denied(
+        self,
+        *,
+        context: _ToolRunContext,
+        reason: str,
+    ) -> None:
+        self._reporter.tool_denied(
+            tool_name=context.tool_name,
+            target=context.target,
+            current_file=context.current_file,
+            reason=reason,
+            expert_name=context.expert_name,
+        )
 
 
 def _resolve_tool_target(inputs: dict[str, Any], *, fallback: str) -> str:
@@ -280,3 +308,10 @@ def _coerce_non_empty_string(value: object) -> str | None:
 
 def _is_expert_tool(tool_name: str) -> bool:
     return tool_name == "read_code_chunk"
+
+
+def _tool_error_reason(error: BaseException) -> str:
+    message = str(error).strip()
+    if message:
+        return message
+    return type(error).__name__

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from argparse import Namespace
 
+from scout_agent.app.audit_ui import AuditUiError
 from scout_agent.app.command_config import resolve_audit_config
 from scout_agent.app.console_reporting import ConsoleOutput
 from scout_agent.app.errors import CommandError
+from scout_agent.domain.audit import AuditState
 from scout_agent.llm.providers import ProviderError
 from scout_agent.runtime.audit.graph import (
     AuditContext,
@@ -27,6 +29,7 @@ def run_audit_command(
             scout_files=config.scout_files,
         )
         model_name = config.model_name or initialized.facts_document.model
+        session = output.make_audit_progress_session(ui_mode=config.ui_mode)
 
         context = AuditContext(
             project_root=config.project_root,
@@ -36,19 +39,13 @@ def run_audit_command(
             llm_mode=config.llm_mode,
             extra_prompt=config.extra_prompt,
             initial_state=initialized.initial_state,
-            reporter=output.make_audit_progress_reporter(),
+            reporter=session.reporter,
         )
 
-        try:
-            final_state = run_audit(runtime=context)
-            write_report(
-                report_path=context.report_path,
-                facts_document=context.facts_document,
-                state=final_state,
-            )
-        finally:
-            context.reporter.close()
-    except (FileNotFoundError, ValueError, ProviderError) as exc:
+        final_state = session.run(
+            lambda: _run_audit_task(context)
+        )
+    except (AuditUiError, FileNotFoundError, ValueError, ProviderError) as exc:
         raise CommandError(str(exc)) from exc
 
     output.print_audit_summary(
@@ -56,3 +53,13 @@ def run_audit_command(
         final_state=final_state,
     )
     return 0
+
+
+def _run_audit_task(context: AuditContext) -> AuditState:
+    final_state = run_audit(runtime=context)
+    write_report(
+        report_path=context.report_path,
+        facts_document=context.facts_document,
+        state=final_state,
+    )
+    return final_state

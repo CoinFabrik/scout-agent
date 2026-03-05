@@ -8,7 +8,7 @@ Scout-Agent is a two-step CLI for Soroban smart contract review:
 The product is intentionally simple:
 
 - one run per command
-- plain text console output
+- minimal interactive audit progress UI
 - no hidden run state
 - no interactive resume flow
 
@@ -44,6 +44,7 @@ Optional flags:
 - `--llm-mode`
 - `--facts-path`
 - `--report-path`
+- `--ui plain` to disable the audit TUI
 - `--max-parallel-files` for `extract-facts`
 
 `scout.json` can provide defaults for:
@@ -63,7 +64,11 @@ Optional flags:
 
 - `REPORT.md`
 
-Console output is line-based and always plain text. Typical audit events include:
+`audit` uses a minimal full-screen TUI by default on interactive terminals and
+falls back to plain line-based output on non-TTY stdout. Use `--ui plain` to
+force line-based output.
+
+Typical audit events include:
 
 - audit start
 - current file

@@ -3,6 +3,10 @@ from __future__ import annotations
 from io import StringIO
 from pathlib import Path
 
+from scout_agent.app.audit_ui import (
+    PlainAuditProgressSession,
+    TextualAuditProgressSession,
+)
 from scout_agent.app.console_reporting import ConsoleOutput
 from scout_agent.domain.audit import AuditState, Finding
 from scout_agent.runtime.extract.models import ExtractFactsPipelineResult
@@ -25,6 +29,15 @@ def _audit_state() -> AuditState:
         ],
         "finding_keys": [],
     }
+
+
+class FakeStdout(StringIO):
+    def __init__(self, *, is_tty: bool) -> None:
+        super().__init__()
+        self._is_tty = is_tty
+
+    def isatty(self) -> bool:
+        return self._is_tty
 
 
 def test_console_output_constructs_plain_console_output() -> None:
@@ -183,3 +196,27 @@ def test_audit_progress_reporter_prints_expert_and_tool_logs() -> None:
         "Tool used: actor=supervisor tool=read target=/contracts/a.rs lines=1-75 offset=0 limit=2000",
         "Tool denied: actor=supervisor tool=read target=/contracts/b.rs current=/contracts/a.rs reason=outside-current-file-scope",
     ]
+
+
+def test_console_output_uses_textual_session_for_tty_tui() -> None:
+    output = ConsoleOutput(stdout=FakeStdout(is_tty=True), stderr=StringIO())
+
+    session = output.make_audit_progress_session(ui_mode="tui")
+
+    assert isinstance(session, TextualAuditProgressSession)
+
+
+def test_console_output_falls_back_to_plain_session_for_non_tty_tui() -> None:
+    output = ConsoleOutput(stdout=FakeStdout(is_tty=False), stderr=StringIO())
+
+    session = output.make_audit_progress_session(ui_mode="tui")
+
+    assert isinstance(session, PlainAuditProgressSession)
+
+
+def test_console_output_uses_plain_session_for_plain_mode() -> None:
+    output = ConsoleOutput(stdout=FakeStdout(is_tty=True), stderr=StringIO())
+
+    session = output.make_audit_progress_session(ui_mode="plain")
+
+    assert isinstance(session, PlainAuditProgressSession)

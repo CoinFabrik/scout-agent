@@ -4,7 +4,9 @@ from argparse import Namespace
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
+from scout_agent.app.audit_ui import AuditUiMode
 from scout_agent.configuration.scout_config import ScoutConfig, load_default_scout_config
 from scout_agent.configuration.settings import (
     resolve_extra_prompt_text,
@@ -36,6 +38,7 @@ class ResolvedAuditConfig:
     llm_mode: str
     scout_files: list[str] | None
     extra_prompt: str | None
+    ui_mode: AuditUiMode
 
 
 def resolve_extract_config(
@@ -91,6 +94,7 @@ def resolve_audit_config(
         ),
         scout_files=_scout_files(scout_config),
         extra_prompt=resolve_extra_prompt_text(project_root, args.extra_prompt),
+        ui_mode=cast(AuditUiMode, getattr(args, "ui", "tui")),
     )
 
 

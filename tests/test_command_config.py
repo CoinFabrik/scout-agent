@@ -3,6 +3,7 @@ from __future__ import annotations
 from argparse import Namespace
 from pathlib import Path
 
+from scout_agent.app.cli import parse_args
 from scout_agent.app.command_config import (
     resolve_audit_config,
     resolve_extract_config,
@@ -80,6 +81,7 @@ def test_resolve_audit_config_falls_back_to_facts_model_only_when_needed(
             model=None,
             llm_mode=None,
             extra_prompt=None,
+            ui="tui",
         ),
         facts_model="openai:gpt-5",
         env={},
@@ -92,3 +94,28 @@ def test_resolve_audit_config_falls_back_to_facts_model_only_when_needed(
     assert config.llm_mode == "consistent"
     assert config.scout_files is None
     assert config.extra_prompt is None
+    assert config.ui_mode == "tui"
+
+
+def test_parse_args_defaults_audit_ui_to_tui() -> None:
+    args = parse_args(["audit", "/tmp/project"])
+
+    assert args.ui == "tui"
+
+
+def test_resolve_audit_config_accepts_plain_ui_mode(tmp_path: Path) -> None:
+    config = resolve_audit_config(
+        Namespace(
+            project_root=str(tmp_path),
+            facts_path=None,
+            report_path=None,
+            model=None,
+            llm_mode=None,
+            extra_prompt=None,
+            ui="plain",
+        ),
+        facts_model="openai:gpt-5",
+        env={},
+    )
+
+    assert config.ui_mode == "plain"

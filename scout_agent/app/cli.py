@@ -51,6 +51,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional .txt file whose contents are appended to supervisor and expert prompts.",
     )
+    audit_parser.add_argument(
+        "--ui",
+        choices=("tui", "plain"),
+        default="tui",
+        help="Audit progress UI mode. Defaults to 'tui' and falls back to plain output on non-TTY stdout.",
+    )
 
     return parser
 

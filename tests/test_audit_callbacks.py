@@ -352,3 +352,32 @@ def test_runtime_progress_handler_unattributed_read_code_chunk_is_anomaly_actor(
             "limit": None,
         }
     ]
+
+
+def test_runtime_progress_handler_reports_tool_denial_from_tool_error() -> None:
+    reporter = FakeReporter()
+    handler = _handler(reporter=reporter)
+
+    tool_run_id = uuid4()
+
+    handler.on_tool_start(
+        {"name": "read_code_chunk"},
+        "",
+        run_id=tool_run_id,
+        inputs={"file": "contracts/gateway.rs"},
+    )
+    handler.on_tool_error(
+        RuntimeError("backend denied"),
+        run_id=tool_run_id,
+    )
+
+    assert reporter.used == []
+    assert reporter.denied == [
+        {
+            "tool_name": "read_code_chunk",
+            "target": "contracts/gateway.rs",
+            "current_file": "/contracts/gateway.rs",
+            "reason": "backend denied",
+            "expert_name": "unknown_subagent",
+        }
+    ]

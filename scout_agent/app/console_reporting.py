@@ -1,13 +1,19 @@
 from __future__ import annotations
-from scout_agent.runtime.audit.reporting import PlainAuditProgressReporter
-from scout_agent.runtime.extract.reporting import PlainExtractProgressReporter
 
 import sys
 from pathlib import Path
 from typing import TextIO
 
+from scout_agent.app.audit_ui import (
+    AuditProgressSession,
+    AuditUiMode,
+    PlainAuditProgressSession,
+    TextualAuditProgressSession,
+)
 from scout_agent.domain.audit import AuditState
+from scout_agent.runtime.audit.reporting import PlainAuditProgressReporter
 from scout_agent.runtime.extract.models import ExtractFactsPipelineResult
+from scout_agent.runtime.extract.reporting import PlainExtractProgressReporter
 
 
 class ConsoleOutput:
@@ -25,6 +31,21 @@ class ConsoleOutput:
 
     def make_audit_progress_reporter(self) -> PlainAuditProgressReporter:
         return PlainAuditProgressReporter(self._stdout)
+
+    def make_audit_progress_session(
+        self,
+        *,
+        ui_mode: AuditUiMode,
+    ) -> AuditProgressSession:
+        if ui_mode == "plain":
+            return PlainAuditProgressSession(
+                reporter=PlainAuditProgressReporter(self._stdout)
+            )
+        if not _is_tty(self._stdout):
+            return PlainAuditProgressSession(
+                reporter=PlainAuditProgressReporter(self._stdout)
+            )
+        return TextualAuditProgressSession()
 
     def print_extract_summary(
         self,
@@ -54,3 +75,10 @@ class ConsoleOutput:
 
     def print_error(self, message: str) -> None:
         print(f"Error: {message}", file=self._stderr)
+
+
+def _is_tty(stream: TextIO) -> bool:
+    try:
+        return bool(stream.isatty())
+    except Exception:
+        return False

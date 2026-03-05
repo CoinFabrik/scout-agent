@@ -126,6 +126,7 @@ def test_audit_cli_success(tmp_path: Path) -> None:
         facts_document=_facts_document(tmp_path),
     )
     report_path = (tmp_path / "REPORT.md").resolve()
+    stdout = StringIO()
 
     with (
         patch(
@@ -140,6 +141,7 @@ def test_audit_cli_success(tmp_path: Path) -> None:
             "scout_agent.app.audit.write_report",
             return_value=report_path,
         ) as mock_write_report,
+        patch("sys.stdout", stdout),
     ):
         exit_code = main(["audit", str(tmp_path), "--report-path", "REPORT.md"])
 
@@ -157,6 +159,7 @@ def test_audit_cli_falls_back_to_facts_document_model(tmp_path: Path) -> None:
         state=_initialized_state(tmp_path),
         facts_document=_facts_document(tmp_path, model="openai:gpt-5"),
     )
+    stdout = StringIO()
 
     with (
         patch(
@@ -171,6 +174,7 @@ def test_audit_cli_falls_back_to_facts_document_model(tmp_path: Path) -> None:
             "scout_agent.app.audit.write_report",
             return_value=(tmp_path / "REPORT.md").resolve(),
         ),
+        patch("sys.stdout", stdout),
     ):
         exit_code = main(["audit", str(tmp_path)])
 
@@ -187,6 +191,7 @@ def test_audit_cli_passes_extra_prompt_from_txt(tmp_path: Path) -> None:
         state=_initialized_state(tmp_path),
         facts_document=_facts_document(tmp_path),
     )
+    stdout = StringIO()
 
     with (
         patch(
@@ -201,6 +206,7 @@ def test_audit_cli_passes_extra_prompt_from_txt(tmp_path: Path) -> None:
             "scout_agent.app.audit.write_report",
             return_value=(tmp_path / "REPORT.md").resolve(),
         ),
+        patch("sys.stdout", stdout),
     ):
         exit_code = main(
             [
@@ -294,5 +300,15 @@ def test_main_returns_130_for_keyboard_interrupt() -> None:
                 "anthropic:claude-sonnet-4-5",
             ]
         )
+
+    assert exit_code == 130
+
+
+def test_main_returns_130_for_audit_keyboard_interrupt() -> None:
+    with patch(
+        "scout_agent.app.main.run_audit_command",
+        side_effect=KeyboardInterrupt,
+    ):
+        exit_code = main(["audit", "/tmp/project"])
 
     assert exit_code == 130
