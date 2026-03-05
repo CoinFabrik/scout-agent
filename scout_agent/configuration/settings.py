@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Final, Mapping
+from typing import Final
+from collections.abc import Mapping
 
+from scout_agent.path_utils import validate_project_root
 from .llm_modes import DEFAULT_LLM_MODE, normalize_llm_mode
 
 DEFAULT_FACTS_FILENAME: Final[str] = "FACTS.yaml"
@@ -15,12 +17,7 @@ MAX_MAX_PARALLEL_FILES: Final[int] = 100
 
 def resolve_project_root(raw_path: str) -> Path:
     project_root = Path(raw_path).expanduser().resolve()
-
-    if not project_root.exists():
-        raise FileNotFoundError(f"Project root does not exist: {project_root}")
-    if not project_root.is_dir():
-        raise ValueError(f"Project root must be a directory: {project_root}")
-
+    validate_project_root(project_root)
     return project_root
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from scout_agent.app.console_reporting import PlainExtractProgressReporter
+    from scout_agent.runtime.extract.reporting import PlainExtractProgressReporter
 
 
 @dataclass(frozen=True, slots=True)

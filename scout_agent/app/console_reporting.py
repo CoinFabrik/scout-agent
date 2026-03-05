@@ -54,11 +54,3 @@ class ConsoleOutput:
 
     def print_error(self, message: str) -> None:
         print(f"Error: {message}", file=self._stderr)
-
-
-def build_console_output(
-    *,
-    stdout: TextIO | None = None,
-    stderr: TextIO | None = None,
-) -> ConsoleOutput:
-    return ConsoleOutput(stdout=stdout, stderr=stderr)

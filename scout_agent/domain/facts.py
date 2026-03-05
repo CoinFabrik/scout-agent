@@ -97,27 +97,6 @@ def load_facts_document(path: Path) -> FactsDocument:
     return FactsDocument.model_validate(payload)
 
 
-def functions_for_file(
-    document: FactsDocument,
-    relative_path: str,
-) -> dict[str, FunctionSummary]:
-    return {
-        function_key: summary
-        for function_key, summary in document.functions.items()
-        if file_path_from_function_key(function_key) == relative_path
-    }
-
-
-def count_functions(document: FactsDocument) -> int:
-    return len(document.functions)
-
-
-def fact_paths(document: FactsDocument) -> set[str]:
-    return {
-        file_path_from_function_key(function_key) for function_key in document.functions
-    }
-
-
 def build_file_fact_index(
     document: FactsDocument,
 ) -> dict[str, dict[str, FunctionSummary]]:
@@ -143,8 +122,7 @@ def file_path_from_function_key(function_key: str) -> str:
     separator_index = cleaned_key.find(".rs::")
     if separator_index == -1:
         raise ValueError(
-            "Function key does not contain a Rust source path prefix: "
-            f"{function_key}"
+            f"Function key does not contain a Rust source path prefix: {function_key}"
         )
 
     return cleaned_key[: separator_index + len(".rs")]

@@ -23,7 +23,9 @@ def _initialized_state(root: Path) -> AuditState:
     }
 
 
-def _facts_document(root: Path, *, model: str = "anthropic:claude-sonnet-4-5") -> FactsDocument:
+def _facts_document(
+    root: Path, *, model: str = "anthropic:claude-sonnet-4-5"
+) -> FactsDocument:
     return FactsDocument(
         generated_at_utc="2026-03-02T12:00:00Z",
         project_root=str(root),
@@ -51,25 +53,27 @@ def test_extract_facts_cli_success() -> None:
         root = Path(tmpdir)
         stdout = StringIO()
 
-        with patch(
-            "scout_agent.app.extract_facts.run_extract_facts_pipeline",
-            return_value=ExtractFactsPipelineResult(
-                project_root=root,
-                facts_path=root / "FACTS.yaml",
-                file_count=3,
-                function_count=11,
-                scope_fingerprint="a" * 64,
+        with (
+            patch(
+                "scout_agent.app.extract_facts.run_extract_facts_pipeline",
+                return_value=ExtractFactsPipelineResult(
+                    project_root=root,
+                    facts_path=root / "FACTS.yaml",
+                    file_count=3,
+                    function_count=11,
+                    scope_fingerprint="a" * 64,
+                ),
             ),
+            contextlib.redirect_stdout(stdout),
         ):
-            with contextlib.redirect_stdout(stdout):
-                exit_code = main(
-                    [
-                        "extract-facts",
-                        str(root),
-                        "--model",
-                        "anthropic:claude-sonnet-4-5",
-                    ]
-                )
+            exit_code = main(
+                [
+                    "extract-facts",
+                    str(root),
+                    "--model",
+                    "anthropic:claude-sonnet-4-5",
+                ]
+            )
 
     assert exit_code == 0
     assert "FACTS written to:" in stdout.getvalue()
@@ -78,11 +82,11 @@ def test_extract_facts_cli_success() -> None:
 
 def test_extract_facts_cli_uses_scout_json_defaults(tmp_path: Path) -> None:
     (tmp_path / "scout.json").write_text(
-        '{\n'
+        "{\n"
         '  "model": "anthropic:claude-sonnet-4-5",\n'
         '  "mode": "creative",\n'
         '  "files": ["contracts"]\n'
-        '}\n',
+        "}\n",
         encoding="utf-8",
     )
     (tmp_path / "contracts").mkdir()
@@ -120,18 +124,31 @@ def test_audit_cli_success(tmp_path: Path) -> None:
         state=_initialized_state(tmp_path),
         facts_document=_facts_document(tmp_path),
     )
+    report_path = (tmp_path / "REPORT.md").resolve()
 
-    with patch(
-        "scout_agent.app.audit.initialize_audit",
-        return_value=initialized,
-    ):
-        with patch(
+    with (
+        patch(
+            "scout_agent.app.audit.initialize_audit",
+            return_value=initialized,
+        ),
+        patch(
             "scout_agent.app.audit.run_audit",
             return_value=initialized.initial_state,
-        ):
-            exit_code = main(["audit", str(tmp_path), "--report-path", "REPORT.md"])
+        ) as mock_run_audit,
+        patch(
+            "scout_agent.app.audit.write_report",
+            return_value=report_path,
+        ) as mock_write_report,
+    ):
+        exit_code = main(["audit", str(tmp_path), "--report-path", "REPORT.md"])
 
     assert exit_code == 0
+    runtime = mock_run_audit.call_args.kwargs["runtime"]
+    mock_write_report.assert_called_once_with(
+        report_path=runtime.report_path,
+        facts_document=runtime.facts_document,
+        state=initialized.initial_state,
+    )
 
 
 def test_audit_cli_falls_back_to_facts_document_model(tmp_path: Path) -> None:
@@ -140,15 +157,21 @@ def test_audit_cli_falls_back_to_facts_document_model(tmp_path: Path) -> None:
         facts_document=_facts_document(tmp_path, model="openai:gpt-5"),
     )
 
-    with patch(
-        "scout_agent.app.audit.initialize_audit",
-        return_value=initialized,
-    ):
-        with patch(
+    with (
+        patch(
+            "scout_agent.app.audit.initialize_audit",
+            return_value=initialized,
+        ),
+        patch(
             "scout_agent.app.audit.run_audit",
             return_value=initialized.initial_state,
-        ) as mock_run_audit:
-            exit_code = main(["audit", str(tmp_path)])
+        ) as mock_run_audit,
+        patch(
+            "scout_agent.app.audit.write_report",
+            return_value=(tmp_path / "REPORT.md").resolve(),
+        ),
+    ):
+        exit_code = main(["audit", str(tmp_path)])
 
     assert exit_code == 0
     runtime = mock_run_audit.call_args.kwargs["runtime"]
@@ -164,22 +187,28 @@ def test_audit_cli_passes_extra_prompt_from_txt(tmp_path: Path) -> None:
         facts_document=_facts_document(tmp_path),
     )
 
-    with patch(
-        "scout_agent.app.audit.initialize_audit",
-        return_value=initialized,
-    ):
-        with patch(
+    with (
+        patch(
+            "scout_agent.app.audit.initialize_audit",
+            return_value=initialized,
+        ),
+        patch(
             "scout_agent.app.audit.run_audit",
             return_value=initialized.initial_state,
-        ) as mock_run_audit:
-            exit_code = main(
-                [
-                    "audit",
-                    str(tmp_path),
-                    "--extra-prompt",
-                    "extra.txt",
-                ]
-            )
+        ) as mock_run_audit,
+        patch(
+            "scout_agent.app.audit.write_report",
+            return_value=(tmp_path / "REPORT.md").resolve(),
+        ),
+    ):
+        exit_code = main(
+            [
+                "audit",
+                str(tmp_path),
+                "--extra-prompt",
+                "extra.txt",
+            ]
+        )
 
     assert exit_code == 0
     runtime = mock_run_audit.call_args.kwargs["runtime"]

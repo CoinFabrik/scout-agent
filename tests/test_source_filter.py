@@ -50,15 +50,10 @@ def test_sanitize_rust_source_strips_cfg_test_module_and_preserves_line_count() 
     ]
 
 
-def test_sanitize_rust_source_strips_test_function_but_keeps_non_test_functions() -> None:
-    source_text = (
-        "pub fn prod() {}\n"
-        "\n"
-        "#[test]\n"
-        "fn unit_test() {}\n"
-        "\n"
-        "fn helper() {}\n"
-    )
+def test_sanitize_rust_source_strips_test_function_but_keeps_non_test_functions() -> (
+    None
+):
+    source_text = "pub fn prod() {}\n\n#[test]\nfn unit_test() {}\n\nfn helper() {}\n"
 
     sanitized = sanitize_rust_source_for_analysis(
         source_text,
@@ -72,7 +67,9 @@ def test_sanitize_rust_source_strips_test_function_but_keeps_non_test_functions(
     assert [fn.name for fn in parsed.functions] == ["prod", "helper"]
 
 
-def test_build_analysis_source_hash_ignores_inline_test_only_changes(tmp_path: Path) -> None:
+def test_build_analysis_source_hash_ignores_inline_test_only_changes(
+    tmp_path: Path,
+) -> None:
     file_path = tmp_path / "lib.rs"
     file_path.write_text(
         "pub fn prod() {}\n\n#[cfg(test)]\nmod tests {\n    fn a() {}\n}\n",

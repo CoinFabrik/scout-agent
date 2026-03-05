@@ -1,6 +1,9 @@
 from pathlib import Path
 
-from scout_agent.runtime.source.discovery import compute_scope_fingerprint, discover_rust_files
+from scout_agent.runtime.source.discovery import (
+    compute_scope_fingerprint,
+    discover_rust_files,
+)
 from scout_agent.runtime.source.source_filter import build_analysis_source
 
 
@@ -66,7 +69,9 @@ def test_discovery_excludes_dedicated_test_files(tmp_path: Path) -> None:
     (src / "lib.rs").write_text("pub fn prod() {}\n", encoding="utf-8")
     (src / "tests.rs").write_text("pub fn ignored() {}\n", encoding="utf-8")
     (src / "foo_test.rs").write_text("pub fn ignored_too() {}\n", encoding="utf-8")
-    (tests_dir / "integration.rs").write_text("pub fn ignored_three() {}\n", encoding="utf-8")
+    (tests_dir / "integration.rs").write_text(
+        "pub fn ignored_three() {}\n", encoding="utf-8"
+    )
     (examples / "demo.rs").write_text("pub fn demo() {}\n", encoding="utf-8")
     (benches / "bench.rs").write_text("pub fn bench() {}\n", encoding="utf-8")
 
@@ -87,7 +92,9 @@ def test_discovery_scoped_paths_still_ignore_tests(tmp_path: Path) -> None:
 
     (src / "lib.rs").write_text("pub fn prod() {}\n", encoding="utf-8")
     (src / "tests.rs").write_text("pub fn ignored() {}\n", encoding="utf-8")
-    (tests_dir / "integration.rs").write_text("pub fn ignored_too() {}\n", encoding="utf-8")
+    (tests_dir / "integration.rs").write_text(
+        "pub fn ignored_too() {}\n", encoding="utf-8"
+    )
 
     discovered = discover_rust_files(
         tmp_path,

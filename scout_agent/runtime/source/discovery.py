@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Collection, Final, Sequence
+from typing import Final
 
+from scout_agent.path_utils import validate_project_root
 from scout_agent.runtime.source.source_filter import (
     build_analysis_source,
     is_test_rust_path,
@@ -35,7 +37,7 @@ def discover_rust_files(
     excluded_dir_names: Collection[str] | None = None,
     configured_paths: Collection[str] | None = None,
 ) -> list[DiscoveredRustFile]:
-    _validate_project_root(project_root)
+    validate_project_root(project_root)
 
     excluded = set(DEFAULT_EXCLUDED_DIR_NAMES)
     if excluded_dir_names is not None:
@@ -50,31 +52,45 @@ def discover_rust_files(
         discovered.sort(key=lambda item: item.relative_path)
         return discovered
 
+    discovered = _walk_for_rust_files(
+        root=project_root,
+        scan_dir=project_root,
+        excluded_dir_names=excluded,
+    )
+    discovered.sort(key=lambda item: item.relative_path)
+    return discovered
+
+
+def _walk_for_rust_files(
+    *,
+    root: Path,
+    scan_dir: Path,
+    excluded_dir_names: Collection[str],
+) -> list[DiscoveredRustFile]:
     discovered: list[DiscoveredRustFile] = []
 
     for current_root, dir_names, file_names in os.walk(
-        project_root, topdown=True, followlinks=False
+        scan_dir,
+        topdown=True,
+        followlinks=False,
     ):
         current_path = Path(current_root)
 
         dir_names[:] = sorted(
             directory_name
             for directory_name in dir_names
-            if directory_name not in excluded
+            if directory_name not in excluded_dir_names
             and not (current_path / directory_name).is_symlink()
         )
 
         for file_name in sorted(file_names):
             candidate = current_path / file_name
-
             if candidate.suffix != ".rs":
                 continue
-            if candidate.is_symlink():
-                continue
-            if not candidate.is_file():
+            if candidate.is_symlink() or not candidate.is_file():
                 continue
 
-            relative_path = candidate.relative_to(project_root).as_posix()
+            relative_path = candidate.relative_to(root).as_posix()
             if is_test_rust_path(relative_path):
                 continue
 
@@ -90,7 +106,6 @@ def discover_rust_files(
                 )
             )
 
-    discovered.sort(key=lambda item: item.relative_path)
     return discovered
 
 
@@ -124,34 +139,12 @@ def _discover_configured_rust_files(
             )
 
         if candidate.is_dir():
-            for current_root, dir_names, file_names in os.walk(
-                candidate, topdown=True, followlinks=False
+            for item in _walk_for_rust_files(
+                root=root,
+                scan_dir=candidate,
+                excluded_dir_names=excluded_dir_names,
             ):
-                current_path = Path(current_root)
-                dir_names[:] = sorted(
-                    directory_name
-                    for directory_name in dir_names
-                    if directory_name not in excluded_dir_names
-                    and not (current_path / directory_name).is_symlink()
-                )
-                for file_name in sorted(file_names):
-                    maybe_file = current_path / file_name
-                    if maybe_file.suffix != ".rs":
-                        continue
-                    if maybe_file.is_symlink() or not maybe_file.is_file():
-                        continue
-                    relative_path = maybe_file.relative_to(root).as_posix()
-                    if is_test_rust_path(relative_path):
-                        continue
-                    analysis_source = build_analysis_source(
-                        path=maybe_file,
-                        relative_path=relative_path,
-                    )
-                    discovered[relative_path] = DiscoveredRustFile(
-                        absolute_path=maybe_file,
-                        relative_path=relative_path,
-                        content_sha256=analysis_source.content_sha256,
-                    )
+                discovered[item.relative_path] = item
             continue
 
         if candidate.suffix != ".rs":
@@ -190,10 +183,3 @@ def compute_scope_fingerprint(files: Sequence[DiscoveredRustFile]) -> str:
         digest.update(b"\n")
 
     return digest.hexdigest()
-
-
-def _validate_project_root(project_root: Path) -> None:
-    if not project_root.exists():
-        raise FileNotFoundError(f"Project root does not exist: {project_root}")
-    if not project_root.is_dir():
-        raise ValueError(f"Project root must be a directory: {project_root}")

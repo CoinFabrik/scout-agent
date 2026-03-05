@@ -16,6 +16,7 @@ from scout_agent.runtime.audit.graph import (
     AuditContext,
     run_audit,
 )
+from scout_agent.runtime.audit.report_writer import write_report
 from scout_agent.runtime.audit.run import initialize_audit
 
 
@@ -58,6 +59,11 @@ def run_audit_command(
 
     try:
         final_state = run_audit(runtime=context)
+        write_report(
+            report_path=context.report_path,
+            facts_document=context.facts_document,
+            state=final_state,
+        )
     finally:
         context.reporter.close()
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Collection, Final
+from typing import Final
+from collections.abc import Collection
 
 from scout_agent.runtime.source.source_filter import build_analysis_source
 
@@ -67,9 +68,7 @@ def resolve_in_scope_file(
 
     normalized_relative_path = raw_path.as_posix()
     normalized_allowed_paths = {
-        Path(path.strip()).as_posix()
-        for path in allowed_paths
-        if path and path.strip()
+        Path(path.strip()).as_posix() for path in allowed_paths if path and path.strip()
     }
 
     if normalized_relative_path not in normalized_allowed_paths:

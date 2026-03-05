@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Sequence
+from collections.abc import Sequence
 
 from dotenv import load_dotenv
 
@@ -9,14 +9,14 @@ from scout_agent.llm.providers import ProviderError
 
 from .audit import run_audit_command
 from .cli import parse_args
-from .console_reporting import build_console_output
+from .console_reporting import ConsoleOutput
 from .extract_facts import run_extract_facts_command
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     load_dotenv()
     args = parse_args(argv)
-    output = build_console_output(stdout=sys.stdout, stderr=sys.stderr)
+    output = ConsoleOutput(stdout=sys.stdout, stderr=sys.stderr)
 
     try:
         if args.command == "extract-facts":

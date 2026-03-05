@@ -9,7 +9,6 @@ from scout_agent.domain.audit import Finding
 class PlainAuditProgressReporter:
     def __init__(self, stdout: TextIO) -> None:
         self._stdout = stdout
-        self._closed = False
 
     def started(
         self,
@@ -35,50 +34,6 @@ class PlainAuditProgressReporter:
     ) -> None:
         print(
             f"Auditing {index}/{total}: {current_file}",
-            file=self._stdout,
-            flush=True,
-        )
-
-    def delegation_batch(
-        self,
-        *,
-        current_file: str,
-        delegation_count: int,
-    ) -> None:
-        print(
-            f"{current_file}: delegating {delegation_count} expert checks",
-            file=self._stdout,
-            flush=True,
-        )
-
-    def supervisor_pass(
-        self,
-        *,
-        current_file: str,
-        pass_index: int,
-        completed_checks: int,
-        verified_findings: int,
-        needs_info_notes: int,
-    ) -> None:
-        print(
-            f"{current_file}: supervisor pass {pass_index} "
-            f"({completed_checks} completed checks, {verified_findings} findings, "
-            f"{needs_info_notes} needs-info notes)",
-            file=self._stdout,
-            flush=True,
-        )
-
-    def duplicate_delegations_filtered(
-        self,
-        *,
-        current_file: str,
-        requested: int,
-        dropped: int,
-        remaining: int,
-    ) -> None:
-        print(
-            f"{current_file}: dropped {dropped} duplicate delegations "
-            f"({remaining} new expert checks remain)",
             file=self._stdout,
             flush=True,
         )
@@ -169,6 +124,4 @@ class PlainAuditProgressReporter:
         )
 
     def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
+        return None

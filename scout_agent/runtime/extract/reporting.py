@@ -7,7 +7,6 @@ from typing import TextIO
 class PlainExtractProgressReporter:
     def __init__(self, stdout: TextIO) -> None:
         self._stdout = stdout
-        self._closed = False
 
     def started(
         self,
@@ -67,6 +66,4 @@ class PlainExtractProgressReporter:
         )
 
     def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
+        return None

@@ -1,10 +1,9 @@
 from __future__ import annotations
 from scout_agent.runtime.extract.models import ExtractContext
 
-from datetime import datetime, timezone
-
 from scout_agent.domain.facts import FactsDocument, write_facts_document
 from scout_agent.llm.providers import resolve_model_identifier
+from scout_agent.runtime.time_utils import utc_now_iso
 from scout_agent.runtime.extract.execution import (
     build_tasks,
     execute_extract_tasks,
@@ -65,7 +64,7 @@ def run_extract_facts_pipeline(context: ExtractContext) -> ExtractFactsPipelineR
         functions.update(extracted_file)
 
     document = FactsDocument(
-        generated_at_utc=_utc_now_iso(),
+        generated_at_utc=utc_now_iso(),
         project_root=str(context.project_root),
         model=resolved_model_name,
         llm_mode=context.llm_mode,
@@ -80,13 +79,4 @@ def run_extract_facts_pipeline(context: ExtractContext) -> ExtractFactsPipelineR
         file_count=len(discovered_files),
         function_count=function_count,
         scope_fingerprint=scope_fingerprint,
-    )
-
-
-def _utc_now_iso() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
     )

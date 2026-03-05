@@ -2,13 +2,13 @@ from __future__ import annotations
 from pydantic import BaseModel
 from pathlib import Path
 
-from enum import Enum
+from enum import StrEnum
 from typing import Literal, TypedDict
 
 from pydantic import Field, model_validator
 
 
-class ExpertTypeEnum(str, Enum):
+class ExpertTypeEnum(StrEnum):
     EXECUTION_PATH_CONSISTENCY = "execution_path_consistency"
     COLLECTION_VALIDATION = "collection_validation"
     TIME_STATE = "time_state"
@@ -32,7 +32,7 @@ class ExpertResult(BaseModel):
     finding: Finding | None = None
 
     @model_validator(mode="after")
-    def _validate_finding_presence(self) -> "ExpertResult":
+    def _validate_finding_presence(self) -> ExpertResult:
         if self.status == "VULNERABLE" and self.finding is None:
             raise ValueError("VULNERABLE results must include a finding.")
         if self.status != "VULNERABLE" and self.finding is not None:

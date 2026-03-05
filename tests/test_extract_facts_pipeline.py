@@ -70,9 +70,10 @@ def _make_summaries(parsed_file) -> dict[str, FunctionSummary]:
     for function in parsed_file.functions:
         key = f"{parsed_file.relative_path}::{function.name}"
         if function.impl_target:
-            key = f"{parsed_file.relative_path}::{function.impl_target}::{function.name}"
-        summaries[key] = FunctionSummary(
-        )
+            key = (
+                f"{parsed_file.relative_path}::{function.impl_target}::{function.name}"
+            )
+        summaries[key] = FunctionSummary()
     return summaries
 
 
@@ -97,7 +98,7 @@ def test_extract_facts_pipeline_emits_reporter_events(
     (contracts / "b.rs").write_text("pub fn beta() {}\n", encoding="utf-8")
     (contracts / "c.rs").write_text("pub fn gamma() {}\n", encoding="utf-8")
 
-    def fake_extract(parsed_file, *, model_name, llm_mode):
+    def fake_extract(parsed_file, *, model_name, llm_mode):  # noqa: ARG001
         if parsed_file.relative_path.endswith("a.rs"):
             time.sleep(0.12)
         elif parsed_file.relative_path.endswith("b.rs"):
@@ -134,7 +135,7 @@ def test_extract_facts_pipeline_writes_flat_function_map_in_file_order(
     (contracts / "b.rs").write_text("pub fn beta() {}\n", encoding="utf-8")
     (contracts / "c.rs").write_text("pub fn gamma() {}\n", encoding="utf-8")
 
-    def fake_extract(parsed_file, *, model_name, llm_mode):
+    def fake_extract(parsed_file, *, model_name, llm_mode):  # noqa: ARG001
         if parsed_file.relative_path.endswith("a.rs"):
             time.sleep(0.12)
         elif parsed_file.relative_path.endswith("b.rs"):
@@ -225,7 +226,7 @@ def test_extract_facts_pipeline_fails_after_retry_budget_exhausted(
 
     reporter = FakeExtractReporter()
 
-    with pytest.raises(ExtractFactsParallelError, match="contracts/a.rs") as exc_info:
+    with pytest.raises(ExtractFactsParallelError, match=r"contracts/a\.rs") as exc_info:
         run_extract_facts_pipeline(_context(tmp_path, reporter))
 
     assert invoke_count == 3
@@ -258,7 +259,7 @@ def test_extract_facts_pipeline_bounds_concurrency(
     max_seen = 0
     lock = threading.Lock()
 
-    def fake_extract(parsed_file, *, model_name, llm_mode):
+    def fake_extract(parsed_file, *, model_name, llm_mode):  # noqa: ARG001
         nonlocal active, max_seen
         with lock:
             active += 1
@@ -293,7 +294,7 @@ def test_extract_facts_pipeline_fails_after_in_flight_tasks(
     started_paths: list[str] = []
     lock = threading.Lock()
 
-    def fake_extract(parsed_file, *, model_name, llm_mode):
+    def fake_extract(parsed_file, *, model_name, llm_mode):  # noqa: ARG001
         with lock:
             started_paths.append(parsed_file.relative_path)
 
@@ -311,7 +312,7 @@ def test_extract_facts_pipeline_fails_after_in_flight_tasks(
 
     reporter = FakeExtractReporter()
 
-    with pytest.raises(ExtractFactsParallelError, match="contracts/a.rs") as exc_info:
+    with pytest.raises(ExtractFactsParallelError, match=r"contracts/a\.rs") as exc_info:
         run_extract_facts_pipeline(_context(tmp_path, reporter))
 
     assert "contracts/a.rs" in started_paths
@@ -334,7 +335,9 @@ def test_extract_facts_pipeline_fails_after_in_flight_tasks(
     assert not (tmp_path / "FACTS.yaml").exists()
 
 
-def test_extract_facts_pipeline_rejects_empty_or_test_only_scopes(tmp_path: Path) -> None:
+def test_extract_facts_pipeline_rejects_empty_or_test_only_scopes(
+    tmp_path: Path,
+) -> None:
     reporter = FakeExtractReporter()
 
     with pytest.raises(
@@ -366,7 +369,9 @@ def test_extract_facts_pipeline_does_not_create_scout_state_directory(
 
     monkeypatch.setattr(
         "scout_agent.runtime.extract.pipeline.extract_file_facts_with_llm",
-        lambda parsed_file, *, model_name, llm_mode: _make_summaries(parsed_file),
+        lambda parsed_file, *, model_name, llm_mode: _make_summaries(
+            parsed_file
+        ),  # noqa: ARG005
     )
 
     run_extract_facts_pipeline(_context(tmp_path, FakeExtractReporter()))

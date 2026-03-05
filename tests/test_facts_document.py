@@ -40,7 +40,9 @@ def test_write_facts_document_omits_absent_summary_fields(tmp_path: Path) -> Non
     assert "sentinel_values:" not in written
 
     loaded = load_facts_document(facts_path)
-    assert loaded.functions["src/validator.rs::require_nonnegative"] == FunctionSummary()
+    assert (
+        loaded.functions["src/validator.rs::require_nonnegative"] == FunctionSummary()
+    )
 
 
 def test_file_path_from_function_key_extracts_path_prefix() -> None:

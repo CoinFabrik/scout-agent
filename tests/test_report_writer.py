@@ -49,7 +49,6 @@ def _state(
 def test_report_writer_rejects_incomplete_coverage(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="files_to_review"):
         validate_report_coverage(
-            facts_document=_facts_document(tmp_path),
             state=_state(findings=[], files_to_review=["contracts/gateway.rs"]),
         )
 
@@ -64,7 +63,9 @@ def test_report_writer_renders_zero_findings(tmp_path: Path) -> None:
     assert "- contracts/gateway.rs" in markdown
 
 
-def test_report_writer_orders_findings_by_severity_then_location(tmp_path: Path) -> None:
+def test_report_writer_orders_findings_by_severity_then_location(
+    tmp_path: Path,
+) -> None:
     markdown = render_report_markdown(
         facts_document=_facts_document(tmp_path),
         state=_state(

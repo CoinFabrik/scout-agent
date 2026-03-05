@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final
 
 from scout_agent.domain.audit import AuditState, Finding
 from scout_agent.domain.facts import FactsDocument
+from scout_agent.runtime.time_utils import utc_now_iso
 
 SEVERITY_ORDER: Final[dict[str, int]] = {
     "CRITICAL": 0,
@@ -18,7 +18,6 @@ SEVERITY_ORDER: Final[dict[str, int]] = {
 
 def validate_report_coverage(
     *,
-    facts_document: FactsDocument,
     state: AuditState,
 ) -> None:
     if state["files_to_review"]:
@@ -33,11 +32,11 @@ def render_report_markdown(
     facts_document: FactsDocument,
     state: AuditState,
 ) -> str:
-    validate_report_coverage(facts_document=facts_document, state=state)
+    validate_report_coverage(state=state)
 
     findings = _sorted_findings(state["verified_findings"])
     severity_counts = Counter(finding.severity for finding in findings)
-    generated_at_utc = _utc_now_iso()
+    generated_at_utc = utc_now_iso()
 
     sections = [
         "# Scout-Agent Report",
@@ -117,11 +116,4 @@ def _sorted_findings(findings: list[Finding]) -> list[Finding]:
             SEVERITY_ORDER[finding.severity],
             finding.location,
         ),
-    )
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace(
-        "+00:00",
-        "Z",
     )

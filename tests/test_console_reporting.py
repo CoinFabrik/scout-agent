@@ -3,7 +3,7 @@ from __future__ import annotations
 from io import StringIO
 from pathlib import Path
 
-from scout_agent.app.console_reporting import ConsoleOutput, build_console_output
+from scout_agent.app.console_reporting import ConsoleOutput
 from scout_agent.domain.audit import AuditState, Finding
 from scout_agent.runtime.extract.models import ExtractFactsPipelineResult
 
@@ -27,8 +27,8 @@ def _audit_state() -> AuditState:
     }
 
 
-def test_build_console_output_returns_plain_console_output() -> None:
-    output = build_console_output(stdout=StringIO(), stderr=StringIO())
+def test_console_output_constructs_plain_console_output() -> None:
+    output = ConsoleOutput(stdout=StringIO(), stderr=StringIO())
 
     assert isinstance(output, ConsoleOutput)
 

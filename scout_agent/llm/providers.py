@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Mapping
+from collections.abc import Mapping
 
 from scout_agent.configuration.llm_config import get_model_kwargs
 

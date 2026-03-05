@@ -25,8 +25,7 @@ def test_rust_parser_handles_nested_modules_and_impls() -> None:
     )
 
     assert [
-        (fn.name, fn.kind, fn.visibility, fn.impl_target)
-        for fn in parsed.functions
+        (fn.name, fn.kind, fn.visibility, fn.impl_target) for fn in parsed.functions
     ] == [
         ("inner", "function", "public", None),
         ("deposit", "method", "public", "Vault"),
@@ -41,4 +40,3 @@ def test_rust_parser_rejects_malformed_rust() -> None:
         assert "Failed to parse Rust source without errors" in str(exc)
     else:
         raise AssertionError("Expected parse_rust_source to raise ValueError")
-

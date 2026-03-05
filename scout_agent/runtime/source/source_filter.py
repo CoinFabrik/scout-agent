@@ -5,10 +5,13 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Final
 
-from tree_sitter import Language, Node, Parser
-import tree_sitter_rust as tsr
+from tree_sitter import Node
+from scout_agent.runtime.source.tree_sitter_utils import (
+    RUST_LANGUAGE,
+    build_parser,
+    node_text,
+)
 
-RUST_LANGUAGE: Final[Language] = Language(tsr.language())
 _CONTAINER_NODE_TYPES: Final[frozenset[str]] = frozenset(
     {"source_file", "declaration_list"}
 )
@@ -34,10 +37,7 @@ def is_test_rust_path(relative_path: str) -> bool:
         return True
     if basename.startswith("test_") and basename.endswith(".rs"):
         return True
-    if basename.endswith("_test.rs"):
-        return True
-
-    return False
+    return bool(basename.endswith("_test.rs"))
 
 
 def build_analysis_source(
@@ -77,7 +77,7 @@ def _build_sanitized_views(
     relative_path: str,
 ) -> tuple[str, bytes]:
     source_bytes = source_text.encode("utf-8")
-    parser = _build_parser()
+    parser = build_parser(RUST_LANGUAGE)
     tree = parser.parse(source_bytes)
     root = tree.root_node
 
@@ -94,15 +94,6 @@ def _build_sanitized_views(
             line_preserving[index] = 0x20
 
     return line_preserving.decode("utf-8"), _strip_spans(source_bytes, spans)
-
-
-def _build_parser() -> Parser:
-    try:
-        return Parser(RUST_LANGUAGE)
-    except TypeError:
-        parser = Parser()
-        parser.language = RUST_LANGUAGE
-        return parser
 
 
 def _collect_strip_spans(
@@ -219,9 +210,5 @@ def _is_test_attribute_item(
     if attribute_node is None:
         return False
 
-    normalized = "".join(_node_text(source, attribute_node).split())
+    normalized = "".join(node_text(source, attribute_node).split())
     return normalized == "cfg(test)" or normalized == "test"
-
-
-def _node_text(source: bytes, node: Node) -> str:
-    return source[node.start_byte : node.end_byte].decode("utf-8")

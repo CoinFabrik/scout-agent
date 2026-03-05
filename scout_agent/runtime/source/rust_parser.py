@@ -1,21 +1,20 @@
-from __future__ import annotations
+from typing import Literal
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Final, Literal
 
-from tree_sitter import Language, Node, Parser
-import tree_sitter_rust as tsr
+from tree_sitter import Node
+from scout_agent.runtime.source.tree_sitter_utils import (
+    RUST_LANGUAGE,
+    build_parser,
+    node_text,
+)
 
 FunctionKind = Literal["function", "method"]
 FunctionVisibility = Literal["public", "private", "unknown"]
 
-RUST_LANGUAGE: Final[Language] = Language(tsr.language())
-
 
 @dataclass(frozen=True, slots=True)
 class ParsedRustFunction:
-    function_id: str
     name: str
     kind: FunctionKind
     visibility: FunctionVisibility
@@ -34,7 +33,7 @@ class ParsedRustFile:
 
 
 def parse_rust_source(source: bytes, *, relative_path: str) -> ParsedRustFile:
-    parser = _build_parser()
+    parser = build_parser(RUST_LANGUAGE)
     tree = parser.parse(source)
     root = tree.root_node
 
@@ -56,16 +55,6 @@ def parse_rust_source(source: bytes, *, relative_path: str) -> ParsedRustFile:
         source_text=source_text,
         functions=functions,
     )
-
-
-def _build_parser() -> Parser:
-    # tree-sitter Python bindings have changed constructor style across versions.
-    try:
-        return Parser(RUST_LANGUAGE)
-    except TypeError:
-        parser = Parser()
-        parser.language = RUST_LANGUAGE
-        return parser
 
 
 def _collect_functions(
@@ -163,7 +152,7 @@ def _extract_impl_target(impl_node: Node, source: bytes) -> str | None:
     if type_node is None:
         return None
 
-    text = _node_text(source, type_node).strip()
+    text = node_text(source, type_node).strip()
     return text or None
 
 
@@ -179,7 +168,7 @@ def _build_parsed_function(
     if name_node is None:
         raise ValueError(f"Function node is missing a name in {relative_path}")
 
-    name = _node_text(source, name_node).strip()
+    name = node_text(source, name_node).strip()
     if not name:
         raise ValueError(f"Function node has an empty name in {relative_path}")
 
@@ -188,7 +177,7 @@ def _build_parsed_function(
     body_node = function_node.child_by_field_name("body")
 
     if body_node is None:
-        signature = _node_text(source, function_node).strip()
+        signature = node_text(source, function_node).strip()
     else:
         signature = (
             source[function_node.start_byte : body_node.start_byte]
@@ -196,11 +185,10 @@ def _build_parsed_function(
             .rstrip()
         )
 
-    source_text = _node_text(source, function_node).rstrip()
+    source_text = node_text(source, function_node).rstrip()
     visibility = _extract_visibility(function_node, source)
 
     return ParsedRustFunction(
-        function_id=f"{relative_path}::{name}#L{line_start}",
         name=name,
         kind=kind,
         visibility=visibility,
@@ -217,13 +205,9 @@ def _extract_visibility(function_node: Node, source: bytes) -> FunctionVisibilit
         if child.type != "visibility_modifier":
             continue
 
-        raw_visibility = _node_text(source, child).strip()
+        raw_visibility = node_text(source, child).strip()
         if raw_visibility.startswith("pub"):
             return "public"
         return "unknown"
 
     return "private"
-
-
-def _node_text(source: bytes, node: Node) -> str:
-    return source[node.start_byte : node.end_byte].decode("utf-8")
