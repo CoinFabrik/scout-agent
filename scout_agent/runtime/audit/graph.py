@@ -19,6 +19,7 @@ from scout_agent.runtime.audit.audit_callbacks import RuntimeProgressHandler
 from scout_agent.runtime.audit.audit_prompts import (
     PARENT_SYSTEM_PROMPT,
     build_parent_audit_prompt,
+    build_parent_system_prompt,
 )
 from scout_agent.runtime.audit.experts import (
     SUBAGENT_MANIFEST,
@@ -117,18 +118,22 @@ def _run_file_audit(
         virtual_mode=True,
         current_file=current_file,
     )
+    system_prompt = build_parent_system_prompt(
+        current_file=current_file,
+        current_file_facts=file_fact_index.get(current_file, {}),
+        all_facts=runtime.facts_document.functions,
+        extra_prompt=runtime.extra_prompt,
+    )
     agent = create_deep_agent(
         name="scout-agent",
         model=build_chat_model(runtime.model_name, runtime.llm_mode),
-        system_prompt=append_extra_prompt(PARENT_SYSTEM_PROMPT, runtime.extra_prompt),
+        system_prompt=system_prompt,
         backend=backend,
         subagents=expert_subagents,
         response_format=FileAuditResponse,
     )
     prompt = build_parent_audit_prompt(
         current_file=current_file,
-        current_file_facts=file_fact_index.get(current_file, {}),
-        all_facts=runtime.facts_document.functions,
         extra_prompt=runtime.extra_prompt,
     )
     callback_handler = RuntimeProgressHandler(

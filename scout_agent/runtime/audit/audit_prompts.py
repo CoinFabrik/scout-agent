@@ -9,7 +9,7 @@ from scout_agent.runtime.audit.prompt_utils import append_extra_prompt
 
 PARENT_SYSTEM_PROMPT = """You are the supervisor for a Soroban smart-contract audit.
 
-Your sole responsibility is to read and understand the file, then decide which specialist subagents — if any — are needed to audit it.
+Your sole responsibility is to read and understand the file, then decide which specialist subagents if any are needed to audit it.
 
 You do not produce findings. You do not audit. You only delegate.
 
@@ -33,25 +33,39 @@ You do not produce findings. You do not audit. You only delegate.
 """
 
 
-def build_parent_audit_prompt(
+def build_parent_system_prompt(
     *,
     current_file: str,
     current_file_facts: dict[str, FunctionSummary],
     all_facts: dict[str, FunctionSummary],
     extra_prompt: str | None = None,
 ) -> str:
+    current_file_fact_text = _format_current_file_facts(current_file_facts)
     other_inventory = _format_cross_file_inventory(
         current_file=current_file,
         all_facts=all_facts,
     )
-    current_file_fact_text = _format_current_file_facts(current_file_facts)
 
-    prompt = (
+    facts_block = (
+        "## Context Facts\n\n"
         f"Current file: {current_file}\n\n"
         "Current file fact summaries:\n"
         f"{current_file_fact_text}\n\n"
         "Cross-file fact inventory:\n"
-        f"{other_inventory}\n\n"
+        f"{other_inventory}"
+    )
+
+    full_system_prompt = f"{PARENT_SYSTEM_PROMPT}\n\n{facts_block}"
+    return append_extra_prompt(full_system_prompt, extra_prompt)
+
+
+def build_parent_audit_prompt(
+    *,
+    current_file: str,
+    extra_prompt: str | None = None,
+) -> str:
+    prompt = (
+        f"Audit the current file: {current_file}\n\n"
         "Instructions:\n"
         "- Audit only the current file.\n"
         "- Use built-in file tools only for the current file when needed.\n"
