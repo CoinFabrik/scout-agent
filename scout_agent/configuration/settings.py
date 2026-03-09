@@ -37,12 +37,23 @@ def resolve_report_path(project_root: Path, override: str | None) -> Path:
     )
 
 
-def resolve_extra_prompt_text(project_root: Path, override: str | None) -> str | None:
+def resolve_extra_prompt_text(
+    project_root: Path,
+    override: str | None,
+    *,
+    invocation_dir: Path | None = None,
+) -> str | None:
     if override is None or not override.strip():
         return None
 
     raw = Path(override).expanduser()
-    prompt_path = raw.resolve() if raw.is_absolute() else (project_root / raw).resolve()
+    if raw.is_absolute():
+        prompt_path = raw.resolve()
+    else:
+        base_dir = invocation_dir or Path.cwd()
+        prompt_path = (base_dir / raw).resolve()
+        if not prompt_path.exists():
+            prompt_path = (project_root / raw).resolve()
 
     if not prompt_path.exists():
         raise FileNotFoundError(f"Extra prompt file does not exist: {prompt_path}")

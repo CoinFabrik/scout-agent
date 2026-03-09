@@ -73,6 +73,13 @@ class ConsoleOutput:
             file=self._stdout,
         )
 
+    def print_dump_render_summary(
+        self,
+        *,
+        dump_dir: Path,
+    ) -> None:
+        print(f"Dump rendered in: {dump_dir.resolve()}", file=self._stdout)
+
     def print_error(self, message: str) -> None:
         print(f"Error: {message}", file=self._stderr)
 

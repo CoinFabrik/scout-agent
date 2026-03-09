@@ -39,11 +39,18 @@ Run the audit:
 scout-agent audit /path/to/project --model anthropic:claude-sonnet-4-5
 ```
 
+Render readable Markdown for an existing dump:
+
+```bash
+scout-agent render-dump /path/to/project/.scout-ai/audit-dumps/<run-id>
+```
+
 Optional flags:
 
 - `--llm-mode`
 - `--facts-path`
 - `--report-path`
+- `--dump-runtime` to write incremental debug artifacts under `.scout-ai/audit-dumps/`
 - `--ui plain` to disable the audit TUI
 - `--max-parallel-files` for `extract-facts`
 
@@ -63,6 +70,8 @@ Optional flags:
 `audit` writes:
 
 - `REPORT.md`
+- `.scout-ai/audit-dumps/<run-id>/` when `--dump-runtime` is enabled
+- `index.md` and per-file `timeline.md` inside the dump when rendered or during live dump generation
 
 `audit` uses a minimal full-screen TUI by default on interactive terminals and
 falls back to plain line-based output on non-TTY stdout. Use `--ui plain` to

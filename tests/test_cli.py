@@ -222,6 +222,52 @@ def test_audit_cli_passes_extra_prompt_from_txt(tmp_path: Path) -> None:
     assert runtime.extra_prompt == prompt_text
 
 
+def test_audit_cli_resolves_relative_extra_prompt_from_cwd(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / "target"
+    project_root.mkdir()
+    prompt_text = "Track storage layout and authorization boundaries."
+    prompt_path = tmp_path / "extra-facts.txt"
+    prompt_path.write_text(prompt_text, encoding="utf-8")
+
+    initialized = FakeInitialized(
+        state=_initialized_state(project_root),
+        facts_document=_facts_document(project_root),
+    )
+    stdout = StringIO()
+
+    with (
+        patch(
+            "scout_agent.app.audit.initialize_audit",
+            return_value=initialized,
+        ),
+        patch(
+            "scout_agent.app.audit.run_audit",
+            return_value=initialized.initial_state,
+        ) as mock_run_audit,
+        patch(
+            "scout_agent.app.audit.write_report",
+            return_value=(project_root / "REPORT.md").resolve(),
+        ),
+        patch("sys.stdout", stdout),
+    ):
+        monkeypatch.chdir(tmp_path)
+        exit_code = main(
+            [
+                "audit",
+                str(project_root),
+                "--extra-prompt",
+                "./extra-facts.txt",
+            ]
+        )
+
+    assert exit_code == 0
+    runtime = mock_run_audit.call_args.kwargs["runtime"]
+    assert runtime.extra_prompt == prompt_text
+
+
 def test_audit_cli_rejects_non_txt_extra_prompt(tmp_path: Path) -> None:
     (tmp_path / "extra.md").write_text("hello", encoding="utf-8")
     stderr = StringIO()
@@ -312,3 +358,19 @@ def test_main_returns_130_for_audit_keyboard_interrupt() -> None:
         exit_code = main(["audit", "/tmp/project"])
 
     assert exit_code == 130
+
+
+def test_render_dump_cli_dispatches_to_render_command() -> None:
+    stdout = StringIO()
+
+    with (
+        patch(
+            "scout_agent.app.main.run_render_dump_command",
+            return_value=0,
+        ) as mock_run_render_dump,
+        patch("sys.stdout", stdout),
+    ):
+        exit_code = main(["render-dump", "/tmp/project/.scout-ai/audit-dumps/run-1"])
+
+    assert exit_code == 0
+    assert mock_run_render_dump.call_count == 1

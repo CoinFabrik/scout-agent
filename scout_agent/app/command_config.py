@@ -39,6 +39,7 @@ class ResolvedAuditConfig:
     scout_files: list[str] | None
     extra_prompt: str | None
     ui_mode: AuditUiMode
+    dump_runtime: bool
 
 
 def resolve_extract_config(
@@ -95,6 +96,7 @@ def resolve_audit_config(
         scout_files=_scout_files(scout_config),
         extra_prompt=resolve_extra_prompt_text(project_root, args.extra_prompt),
         ui_mode=cast(AuditUiMode, getattr(args, "ui", "tui")),
+        dump_runtime=bool(getattr(args, "dump_runtime", False)),
     )
 
 

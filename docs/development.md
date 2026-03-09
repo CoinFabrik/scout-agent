@@ -22,6 +22,8 @@ Typical loop:
 2. inspect `FACTS.yaml`
 3. run `scout-agent audit <project_root>`
 4. inspect `REPORT.md`
+5. when debugging runtime behavior, rerun with `--dump-runtime` and inspect `.scout-ai/audit-dumps/`
+6. use `scout-agent render-dump <dump_dir>` to regenerate readable Markdown for an existing dump
 
 ## Useful Commands
 

@@ -57,6 +57,20 @@ def build_parser() -> argparse.ArgumentParser:
         default="tui",
         help="Audit progress UI mode. Defaults to 'tui' and falls back to plain output on non-TTY stdout.",
     )
+    audit_parser.add_argument(
+        "--dump-runtime",
+        action="store_true",
+        help="Write incremental per-file runtime dump artifacts under <project_root>/.scout-ai/audit-dumps/.",
+    )
+
+    render_dump_parser = subparsers.add_parser(
+        "render-dump",
+        help="Render readable Markdown artifacts for an existing audit dump directory.",
+    )
+    render_dump_parser.add_argument(
+        "dump_dir",
+        help="Path to a .scout-ai/audit-dumps/<run-id> directory.",
+    )
 
     return parser
 

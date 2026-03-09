@@ -10,6 +10,7 @@ from .cli import parse_args
 from .console_reporting import ConsoleOutput
 from .errors import CommandError
 from .extract_facts import run_extract_facts_command
+from .render_dump import run_render_dump_command
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -23,6 +24,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if args.command == "audit":
             return run_audit_command(args, output=output)
+
+        if args.command == "render-dump":
+            return run_render_dump_command(args, output=output)
 
         raise CommandError(f"Unknown command: {args.command}")
     except CommandError as exc:

@@ -93,6 +93,17 @@ def test_console_output_print_error() -> None:
     assert stderr.getvalue() == "Error: boom\n"
 
 
+def test_console_output_print_dump_render_summary() -> None:
+    stdout = StringIO()
+    output = ConsoleOutput(stdout=stdout, stderr=StringIO())
+
+    output.print_dump_render_summary(dump_dir=Path("/tmp/project/.scout-ai/audit-dumps/run-1"))
+
+    assert stdout.getvalue().strip() == (
+        "Dump rendered in: /tmp/project/.scout-ai/audit-dumps/run-1"
+    )
+
+
 def test_extract_progress_reporter_prints_started_completed_and_failed_lines() -> None:
     stdout = StringIO()
     output = ConsoleOutput(stdout=stdout, stderr=StringIO())

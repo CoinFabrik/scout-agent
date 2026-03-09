@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
@@ -85,6 +86,7 @@ def test_run_audit_command_prints_summary_after_session_finishes(tmp_path: Path)
         scout_files=None,
         extra_prompt=None,
         ui_mode="tui",
+        dump_runtime=False,
     )
     events: list[str] = []
     reporter = object()
@@ -137,6 +139,7 @@ def test_run_audit_command_wraps_audit_ui_errors(tmp_path: Path) -> None:
         scout_files=None,
         extra_prompt=None,
         ui_mode="tui",
+        dump_runtime=False,
     )
 
     class FailingOutput:
@@ -158,3 +161,96 @@ def test_run_audit_command_wraps_audit_ui_errors(tmp_path: Path) -> None:
     ):
         with pytest.raises(CommandError, match="ui init failed"):
             run_audit_command(Namespace(), output=FailingOutput())  # type: ignore[arg-type]
+
+
+def test_run_audit_command_marks_dump_run_failed_on_runtime_error(
+    tmp_path: Path,
+) -> None:
+    initialized = FakeInitialized(root=tmp_path)
+    initialized.initial_state = {
+        "project_root": tmp_path,
+        "facts_path": tmp_path / "FACTS.yaml",
+        "files_to_review": ["contracts/gateway.rs"],
+        "files_reviewed": [],
+        "verified_findings": [],
+        "finding_keys": [],
+    }
+    config = ResolvedAuditConfig(
+        project_root=tmp_path,
+        facts_path=tmp_path / "FACTS.yaml",
+        report_path=tmp_path / "REPORT.md",
+        model_name="anthropic:claude-sonnet-4-5",
+        llm_mode="consistent",
+        scout_files=None,
+        extra_prompt=None,
+        ui_mode="plain",
+        dump_runtime=True,
+    )
+    events: list[str] = []
+    session = FakeSession(reporter=object(), events=events)
+    output = FakeOutput(session=session)
+
+    with (
+        patch("scout_agent.app.audit.resolve_audit_config", return_value=config),
+        patch("scout_agent.app.audit.initialize_audit", return_value=initialized),
+        patch(
+            "scout_agent.app.audit.run_audit",
+            side_effect=ValueError("audit exploded"),
+        ),
+    ):
+        with pytest.raises(CommandError, match="audit exploded"):
+            run_audit_command(Namespace(), output=output)  # type: ignore[arg-type]
+
+    dump_root = tmp_path / ".scout-ai" / "audit-dumps"
+    run_dirs = [path for path in dump_root.iterdir() if path.is_dir()]
+    assert len(run_dirs) == 1
+    run_payload = json.loads((run_dirs[0] / "run.json").read_text(encoding="utf-8"))
+    assert run_payload["status"] == "failed"
+    assert run_payload["files_total"] == 1
+
+
+def test_run_audit_command_creates_completed_dump_run_when_enabled(
+    tmp_path: Path,
+) -> None:
+    initialized = FakeInitialized(root=tmp_path)
+    initialized.initial_state = {
+        "project_root": tmp_path,
+        "facts_path": tmp_path / "FACTS.yaml",
+        "files_to_review": ["contracts/gateway.rs"],
+        "files_reviewed": [],
+        "verified_findings": [],
+        "finding_keys": [],
+    }
+    config = ResolvedAuditConfig(
+        project_root=tmp_path,
+        facts_path=tmp_path / "FACTS.yaml",
+        report_path=tmp_path / "REPORT.md",
+        model_name="anthropic:claude-sonnet-4-5",
+        llm_mode="consistent",
+        scout_files=None,
+        extra_prompt=None,
+        ui_mode="plain",
+        dump_runtime=True,
+    )
+    events: list[str] = []
+    session = FakeSession(reporter=object(), events=events)
+    output = FakeOutput(session=session)
+
+    with (
+        patch("scout_agent.app.audit.resolve_audit_config", return_value=config),
+        patch("scout_agent.app.audit.initialize_audit", return_value=initialized),
+        patch(
+            "scout_agent.app.audit.run_audit",
+            return_value=initialized.initial_state,
+        ),
+        patch("scout_agent.app.audit.write_report"),
+    ):
+        exit_code = run_audit_command(Namespace(), output=output)  # type: ignore[arg-type]
+
+    assert exit_code == 0
+    dump_root = tmp_path / ".scout-ai" / "audit-dumps"
+    run_dirs = [path for path in dump_root.iterdir() if path.is_dir()]
+    assert len(run_dirs) == 1
+    run_payload = json.loads((run_dirs[0] / "run.json").read_text(encoding="utf-8"))
+    assert run_payload["status"] == "completed"
+    assert run_payload["files_total"] == 1

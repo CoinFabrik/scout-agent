@@ -82,6 +82,7 @@ def test_resolve_audit_config_falls_back_to_facts_model_only_when_needed(
             llm_mode=None,
             extra_prompt=None,
             ui="tui",
+            dump_runtime=False,
         ),
         facts_model="openai:gpt-5",
         env={},
@@ -95,12 +96,27 @@ def test_resolve_audit_config_falls_back_to_facts_model_only_when_needed(
     assert config.scout_files is None
     assert config.extra_prompt is None
     assert config.ui_mode == "tui"
+    assert config.dump_runtime is False
 
 
 def test_parse_args_defaults_audit_ui_to_tui() -> None:
     args = parse_args(["audit", "/tmp/project"])
 
     assert args.ui == "tui"
+    assert args.dump_runtime is False
+
+
+def test_parse_args_accepts_dump_runtime_flag() -> None:
+    args = parse_args(["audit", "/tmp/project", "--dump-runtime"])
+
+    assert args.dump_runtime is True
+
+
+def test_parse_args_accepts_render_dump_command() -> None:
+    args = parse_args(["render-dump", "/tmp/project/.scout-ai/audit-dumps/run-1"])
+
+    assert args.command == "render-dump"
+    assert args.dump_dir == "/tmp/project/.scout-ai/audit-dumps/run-1"
 
 
 def test_resolve_audit_config_accepts_plain_ui_mode(tmp_path: Path) -> None:
@@ -113,9 +129,11 @@ def test_resolve_audit_config_accepts_plain_ui_mode(tmp_path: Path) -> None:
             llm_mode=None,
             extra_prompt=None,
             ui="plain",
+            dump_runtime=True,
         ),
         facts_model="openai:gpt-5",
         env={},
     )
 
     assert config.ui_mode == "plain"
+    assert config.dump_runtime is True

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from uuid import uuid4
 
 from scout_agent.domain.audit import AuditState, FileAuditResponse, Finding
+from scout_agent.runtime.audit.dump import AuditDumpWriter
 from scout_agent.domain.facts import FactsDocument, FunctionSummary
 from scout_agent.runtime.audit.audit_backend import FileScopedAuditBackend
 from scout_agent.runtime.audit.audit_callbacks import RuntimeProgressHandler
@@ -233,6 +236,197 @@ def test_run_audit_reviews_files_sequentially(
     assert not (tmp_path / ".scout-ai").exists()
 
 
+def test_run_audit_writes_incremental_dump_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _patch_filesystem_backend(monkeypatch)
+    contracts = tmp_path / "contracts"
+    contracts.mkdir()
+    (contracts / "gateway.rs").write_text("pub fn vote() {}\n", encoding="utf-8")
+
+    facts_document = _facts_document(tmp_path)
+    reporter = FakeAuditReporter()
+    dump_writer = AuditDumpWriter.create(
+        project_root=tmp_path,
+        facts_path=tmp_path / "FACTS.yaml",
+        report_path=tmp_path / "REPORT.md",
+        model_name="anthropic:claude-sonnet-4-5",
+        llm_mode="consistent",
+        files_total=1,
+    )
+    runtime = AuditContext(
+        project_root=tmp_path,
+        report_path=tmp_path / "REPORT.md",
+        facts_document=facts_document,
+        model_name="anthropic:claude-sonnet-4-5",
+        llm_mode="consistent",
+        initial_state={
+            "project_root": tmp_path,
+            "facts_path": tmp_path / "FACTS.yaml",
+            "files_to_review": ["contracts/gateway.rs"],
+            "files_reviewed": [],
+            "verified_findings": [],
+            "finding_keys": [],
+        },
+        reporter=reporter,
+        dump_writer=dump_writer,
+    )
+
+    observed_ids: dict[str, str] = {}
+
+    class FakeAgent:
+        def invoke(self, payload, config=None):
+            assert payload["messages"][0]["role"] == "user"
+            callbacks = config["callbacks"]
+            handler = callbacks[0]
+            supervisor_tool_run_id = uuid4()
+            expert_run_id = uuid4()
+            expert_tool_run_id = uuid4()
+            observed_ids["supervisor_tool_run_id"] = str(supervisor_tool_run_id)
+            observed_ids["expert_run_id"] = str(expert_run_id)
+            observed_ids["expert_tool_run_id"] = str(expert_tool_run_id)
+
+            handler.on_tool_start(
+                {"name": "read_file"},
+                "",
+                run_id=supervisor_tool_run_id,
+                inputs={"file": "contracts/gateway.rs", "offset": 0, "limit": 50},
+            )
+            handler.on_tool_end("ok", run_id=supervisor_tool_run_id)
+
+            handler.on_chain_start(
+                {"name": "time_state"},
+                {},
+                run_id=expert_run_id,
+            )
+            handler.on_tool_start(
+                {"name": "read_code_chunk"},
+                "",
+                run_id=expert_tool_run_id,
+                parent_run_id=expert_run_id,
+                inputs={
+                    "file": "contracts/gateway.rs",
+                    "start_line": 3,
+                    "max_lines": 5,
+                },
+            )
+            handler.on_tool_end(
+                "ok",
+                run_id=expert_tool_run_id,
+                parent_run_id=expert_run_id,
+            )
+            handler.on_chain_end(
+                {
+                    "structured_response": {"status": "SAFE"},
+                    "messages": [{"content": "Expert final SAFE"}],
+                },
+                run_id=expert_run_id,
+            )
+            return {
+                "messages": [{"content": "Supervisor final response"}],
+                "structured_response": FileAuditResponse(
+                    findings=[
+                        Finding(
+                            pattern="Duplicate vector elements",
+                            severity="HIGH",
+                            location="contracts/gateway.rs:22",
+                            description="Vector elements are aggregated without uniqueness checks.",
+                            evidence="contracts/gateway.rs:22-31",
+                        )
+                    ]
+                )
+            }
+
+    monkeypatch.setattr(
+        "scout_agent.runtime.audit.graph.create_deep_agent",
+        lambda **_kwargs: FakeAgent(),
+    )
+    monkeypatch.setattr(
+        "scout_agent.runtime.audit.graph.build_chat_model",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        "scout_agent.runtime.audit.experts.build_chat_model",
+        lambda *_args, **_kwargs: object(),
+    )
+
+    final_state = run_audit(runtime=runtime)
+    dump_writer.finalize_run(status="completed")
+
+    assert len(final_state["verified_findings"]) == 1
+
+    run_payload = json.loads((dump_writer.root_dir / "run.json").read_text(encoding="utf-8"))
+    assert run_payload["status"] == "completed"
+    assert run_payload["files_completed"] == 1
+    assert (dump_writer.root_dir / "index.md").exists()
+
+    file_dir = dump_writer.root_dir / "files" / "contracts" / "gateway.rs"
+    summary_payload = json.loads((file_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary_payload["status"] == "completed"
+    assert summary_payload["findings_count"] == 1
+    assert summary_payload["supervisor_tool_calls"] == 1
+    assert summary_payload["expert_tool_calls"] == 1
+    assert summary_payload["spawned_experts"] == ["time_state"]
+    assert summary_payload["used_text_fallback"] is False
+
+    supervisor_events = [
+        json.loads(line)
+        for line in (file_dir / "supervisor.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [event["event_type"] for event in supervisor_events] == [
+        "started",
+        "tool_used",
+        "delegated_expert",
+        "response_received",
+        "completed",
+    ]
+    assert supervisor_events[0]["actor_run_id"]
+    assert supervisor_events[1]["tool_name"] == "read_file"
+    assert supervisor_events[1]["tool_call_id"] == observed_ids["supervisor_tool_run_id"]
+    assert supervisor_events[1]["preview_text"] == "ok"
+    assert supervisor_events[2]["expert_name"] == "time_state"
+    assert supervisor_events[3]["final_message_text"] == "Supervisor final response"
+
+    expert_events = [
+        json.loads(line)
+        for line in (
+            file_dir / "experts" / "time_state.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+    ]
+    assert [event["event_type"] for event in expert_events] == [
+        "started",
+        "tool_used",
+        "result",
+        "completed",
+    ]
+    assert expert_events[0]["actor_run_id"] == observed_ids["expert_run_id"]
+    assert expert_events[1]["tool_call_id"] == observed_ids["expert_tool_run_id"]
+    assert expert_events[1]["line_start"] == 3
+    assert expert_events[1]["line_end"] == 7
+    assert expert_events[1]["max_lines"] == 5
+    assert expert_events[1]["preview_text"] == "ok"
+    assert expert_events[2]["status"] == "SAFE"
+    assert expert_events[2]["final_message_text"] == "Expert final SAFE"
+
+    file_text = (file_dir / "file.md").read_text(encoding="utf-8")
+    supervisor_timeline_text = (file_dir / "supervisor.timeline.md").read_text(
+        encoding="utf-8"
+    )
+    expert_timeline_text = (
+        file_dir / "experts" / "time_state.timeline.md"
+    ).read_text(encoding="utf-8")
+    index_text = (dump_writer.root_dir / "index.md").read_text(encoding="utf-8")
+    assert "Supervisor timeline" in file_text
+    assert "Expert timeline: `time_state`" in file_text
+    assert "Supervisor final response" in supervisor_timeline_text
+    assert "Expert final SAFE" in expert_timeline_text
+    assert "Preview: not captured in this run." not in supervisor_timeline_text
+    assert "Preview: not captured in this run." not in expert_timeline_text
+    assert "`contracts/gateway.rs`" in index_text
+    assert not (file_dir / "timeline.md").exists()
+
+
 def test_file_scoped_backend_normalizes_parent_agent_paths(
     tmp_path: Path,
     monkeypatch,
@@ -446,6 +640,14 @@ def test_run_audit_logs_warning_when_structured_response_missing(
     (contracts / "gateway.rs").write_text("pub fn vote() {}\n", encoding="utf-8")
 
     facts_document = _facts_document(tmp_path)
+    dump_writer = AuditDumpWriter.create(
+        project_root=tmp_path,
+        facts_path=tmp_path / "FACTS.yaml",
+        report_path=tmp_path / "REPORT.md",
+        model_name="anthropic:claude-sonnet-4-5",
+        llm_mode="consistent",
+        files_total=1,
+    )
     runtime = AuditContext(
         project_root=tmp_path,
         report_path=tmp_path / "REPORT.md",
@@ -461,6 +663,7 @@ def test_run_audit_logs_warning_when_structured_response_missing(
             "finding_keys": [],
         },
         reporter=FakeAuditReporter(),
+        dump_writer=dump_writer,
     )
 
     class FakeAgent:
@@ -499,6 +702,16 @@ def test_run_audit_logs_warning_when_structured_response_missing(
         "No parseable audit response for contracts/gateway.rs, returning empty findings"
         not in caplog.text
     )
+    file_dir = dump_writer.root_dir / "files" / "contracts" / "gateway.rs"
+    summary_payload = json.loads((file_dir / "summary.json").read_text(encoding="utf-8"))
+    supervisor_events = [
+        json.loads(line)
+        for line in (file_dir / "supervisor.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert summary_payload["used_text_fallback"] is True
+    assert supervisor_events[-2]["event_type"] == "response_received"
+    assert supervisor_events[-2]["used_text_fallback"] is True
+    assert supervisor_events[-2]["parse_failed"] is False
 
 
 def test_run_audit_logs_warning_when_text_fallback_is_unparseable(
@@ -512,6 +725,14 @@ def test_run_audit_logs_warning_when_text_fallback_is_unparseable(
     (contracts / "gateway.rs").write_text("pub fn vote() {}\n", encoding="utf-8")
 
     facts_document = _facts_document(tmp_path)
+    dump_writer = AuditDumpWriter.create(
+        project_root=tmp_path,
+        facts_path=tmp_path / "FACTS.yaml",
+        report_path=tmp_path / "REPORT.md",
+        model_name="anthropic:claude-sonnet-4-5",
+        llm_mode="consistent",
+        files_total=1,
+    )
     runtime = AuditContext(
         project_root=tmp_path,
         report_path=tmp_path / "REPORT.md",
@@ -527,6 +748,7 @@ def test_run_audit_logs_warning_when_text_fallback_is_unparseable(
             "finding_keys": [],
         },
         reporter=FakeAuditReporter(),
+        dump_writer=dump_writer,
     )
 
     class FakeAgent:
@@ -565,3 +787,11 @@ def test_run_audit_logs_warning_when_text_fallback_is_unparseable(
         "No parseable audit response for contracts/gateway.rs, returning empty findings"
         in caplog.text
     )
+    file_dir = dump_writer.root_dir / "files" / "contracts" / "gateway.rs"
+    summary_payload = json.loads((file_dir / "summary.json").read_text(encoding="utf-8"))
+    supervisor_events = [
+        json.loads(line)
+        for line in (file_dir / "supervisor.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert summary_payload["used_text_fallback"] is True
+    assert supervisor_events[-2]["parse_failed"] is True

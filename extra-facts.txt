@@ -1,0 +1,2 @@
+This is a Soroban Smart Contract.
+Reentrancy is NOT allowed in Soroban Smart Contracts.

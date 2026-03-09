@@ -21,6 +21,7 @@ from scout_agent.runtime.audit.audit_prompts import (
     build_parent_audit_prompt,
     build_parent_system_prompt,
 )
+from scout_agent.runtime.audit.dump import AuditDumpWriter, extract_message_text
 from scout_agent.runtime.audit.experts import (
     SUBAGENT_MANIFEST,
     CompiledSubAgent,
@@ -42,6 +43,7 @@ class AuditContext:
     reporter: AuditProgressReporter
     initial_state: AuditState
     extra_prompt: str | None = None
+    dump_writer: AuditDumpWriter | None = None
 
 
 def run_audit(
@@ -71,18 +73,25 @@ def run_audit(
 
     while state["files_to_review"]:
         current_file = state["files_to_review"][0]
+        if runtime.dump_writer is not None:
+            runtime.dump_writer.file_started(relative_path=current_file)
         reporter.file_started(
             index=len(state["files_reviewed"]) + 1,
             total=total_files,
             current_file=current_file,
         )
 
-        response = _run_file_audit(
-            runtime=runtime,
-            current_file=current_file,
-            file_fact_index=file_fact_index,
-            expert_subagents=expert_subagents,
-        )
+        try:
+            response = _run_file_audit(
+                runtime=runtime,
+                current_file=current_file,
+                file_fact_index=file_fact_index,
+                expert_subagents=expert_subagents,
+            )
+        except Exception:
+            if runtime.dump_writer is not None:
+                runtime.dump_writer.file_failed(relative_path=current_file)
+            raise
 
         for finding in response.findings:
             finding_key = _make_finding_key(finding)
@@ -90,6 +99,8 @@ def run_audit(
                 continue
             state["finding_keys"].append(finding_key)
             state["verified_findings"].append(finding)
+            if runtime.dump_writer is not None:
+                runtime.dump_writer.finding_verified(relative_path=current_file)
             reporter.finding_verified(
                 total_verified_findings=len(state["verified_findings"]),
                 finding=finding,
@@ -97,6 +108,8 @@ def run_audit(
 
         state["files_reviewed"].append(current_file)
         state["files_to_review"] = state["files_to_review"][1:]
+        if runtime.dump_writer is not None:
+            runtime.dump_writer.file_completed(relative_path=current_file)
         reporter.file_completed(
             reviewed=len(state["files_reviewed"]),
             total=total_files,
@@ -140,17 +153,48 @@ def _run_file_audit(
         reporter=runtime.reporter,
         expert_names={spec.name for spec in SUBAGENT_MANIFEST},
         current_file=current_file,
+        dump_writer=runtime.dump_writer,
     )
+    if runtime.dump_writer is not None:
+        runtime.dump_writer.supervisor_started(relative_path=current_file)
     result = agent.invoke(
         {"messages": [{"role": "user", "content": prompt}]},
         config={"callbacks": [callback_handler]},
     )
+    final_message_text = _extract_final_message_text(result)
 
     structured = result.get("structured_response")
     if structured is not None:
-        if isinstance(structured, FileAuditResponse):
-            return structured
-        return FileAuditResponse.model_validate(structured)
+        try:
+            response = (
+                structured
+                if isinstance(structured, FileAuditResponse)
+                else FileAuditResponse.model_validate(structured)
+            )
+        except ValueError:
+            if runtime.dump_writer is not None:
+                runtime.dump_writer.supervisor_response_received(
+                    relative_path=current_file,
+                    structured_response_present=True,
+                    used_text_fallback=False,
+                    finding_count=0,
+                    parse_failed=True,
+                    final_message_text=final_message_text,
+                    final_message_truncated=False if final_message_text else None,
+                )
+            raise
+        if runtime.dump_writer is not None:
+            runtime.dump_writer.supervisor_response_received(
+                relative_path=current_file,
+                structured_response_present=True,
+                used_text_fallback=False,
+                finding_count=len(response.findings),
+                parse_failed=False,
+                final_message_text=final_message_text,
+                final_message_truncated=False if final_message_text else None,
+            )
+            runtime.dump_writer.supervisor_completed(relative_path=current_file)
+        return response
 
     logger.warning(
         "Structured response missing for %s, falling back to text parse",
@@ -159,6 +203,17 @@ def _run_file_audit(
 
     messages = result.get("messages", [])
     if not messages:
+        if runtime.dump_writer is not None:
+            runtime.dump_writer.supervisor_response_received(
+                relative_path=current_file,
+                structured_response_present=False,
+                used_text_fallback=True,
+                finding_count=0,
+                parse_failed=True,
+                final_message_text=final_message_text,
+                final_message_truncated=False if final_message_text else None,
+            )
+            runtime.dump_writer.supervisor_completed(relative_path=current_file)
         logger.warning(
             "No parseable audit response for %s, returning empty findings",
             current_file,
@@ -169,10 +224,33 @@ def _run_file_audit(
     content = getattr(last_message, "content", last_message)
     if isinstance(content, str) and content.strip():
         try:
-            return FileAuditResponse.model_validate_json(content)
+            response = FileAuditResponse.model_validate_json(content)
+            if runtime.dump_writer is not None:
+                runtime.dump_writer.supervisor_response_received(
+                    relative_path=current_file,
+                    structured_response_present=False,
+                    used_text_fallback=True,
+                    finding_count=len(response.findings),
+                    parse_failed=False,
+                    final_message_text=final_message_text,
+                    final_message_truncated=False if final_message_text else None,
+                )
+                runtime.dump_writer.supervisor_completed(relative_path=current_file)
+            return response
         except (json.JSONDecodeError, ValueError):
             pass
 
+    if runtime.dump_writer is not None:
+        runtime.dump_writer.supervisor_response_received(
+            relative_path=current_file,
+            structured_response_present=False,
+            used_text_fallback=True,
+            finding_count=0,
+            parse_failed=True,
+            final_message_text=final_message_text,
+            final_message_truncated=False if final_message_text else None,
+        )
+        runtime.dump_writer.supervisor_completed(relative_path=current_file)
     logger.warning(
         "No parseable audit response for %s, returning empty findings",
         current_file,
@@ -190,3 +268,17 @@ def _make_finding_key(finding: Finding) -> str:
             finding.evidence,
         ]
     )
+
+
+def _extract_final_message_text(result: dict[str, object]) -> str | None:
+    messages = result.get("messages")
+    if isinstance(messages, list) and messages:
+        extracted = extract_message_text(messages[-1])
+        if extracted:
+            return extracted
+
+    output_value = result.get("output")
+    extracted = extract_message_text(output_value)
+    if extracted:
+        return extracted
+    return None
