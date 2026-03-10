@@ -86,6 +86,7 @@ class PlainAuditProgressReporter:
         line_end: int | None = None,
         offset: int | None = None,
         limit: int | None = None,
+        query: str | None = None,
     ) -> None:
         actor = expert_name if expert_name is not None else "supervisor"
         parts = [
@@ -99,6 +100,8 @@ class PlainAuditProgressReporter:
             parts.append(f"offset={offset}")
         if limit is not None:
             parts.append(f"limit={limit}")
+        if query is not None:
+            parts.append(f"query={query}")
         print(
             "Tool used: " + " ".join(parts),
             file=self._stdout,

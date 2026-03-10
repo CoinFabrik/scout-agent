@@ -17,6 +17,7 @@ class _ToolRunContext:
     line_end: int | None
     offset: int | None
     limit: int | None
+    query: str | None
     current_file: str
 
 
@@ -106,6 +107,7 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         line_start, line_end = _resolve_line_range(safe_inputs)
         offset = _coerce_optional_int(safe_inputs.get("offset"))
         limit = _coerce_optional_int(safe_inputs.get("limit"))
+        query = _resolve_tool_query(tool_name, safe_inputs)
         current_file = _ensure_leading_slash(self._current_file)
 
         self._tool_runs[run_id] = _ToolRunContext(
@@ -116,6 +118,7 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             line_end=line_end,
             offset=offset,
             limit=limit,
+            query=query,
             current_file=current_file,
         )
 
@@ -151,6 +154,7 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             line_end=context.line_end,
             offset=context.offset,
             limit=context.limit,
+            query=context.query,
         )
 
     def _finish_expert_run(self, run_id: UUID) -> None:
@@ -164,14 +168,26 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         self._active_experts.discard(expert_name)
 
 
-def _resolve_tool_target(inputs: dict[str, Any], *, fallback: str) -> str:
-    primary_target = inputs.get("file")
-    if isinstance(primary_target, str) and primary_target.strip():
-        return primary_target.strip()
+def _resolve_tool_query(tool_name: str, inputs: dict[str, Any]) -> str | None:
+    if tool_name == "grep":
+        return f'"{inputs.get("pattern", "")}"'
+    if tool_name == "task":
+        subagent = inputs.get("subagent_type", "unknown")
+        description = inputs.get("description", "")
+        # Get first 50 chars, replace newlines with spaces for log clarity
+        brief = description.replace("\n", " ").strip()
+        if len(brief) > 50:
+            brief = brief[:47] + "..."
+        return f"{subagent} brief={brief}"
+    return None
 
-    secondary_target = inputs.get("file_path")
-    if isinstance(secondary_target, str) and secondary_target.strip():
-        return secondary_target.strip()
+
+def _resolve_tool_target(inputs: dict[str, Any], *, fallback: str) -> str:
+    # Prioritize path for grep/filesystem tools, then file-specific keys
+    for key in ["path", "file", "file_path"]:
+        target = inputs.get(key)
+        if isinstance(target, str) and target.strip():
+            return target.strip()
 
     return fallback
 

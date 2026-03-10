@@ -36,6 +36,7 @@ from scout_agent.runtime.audit.experts import (
     build_expert_subagents,
 )
 from scout_agent.runtime.audit.prompt_utils import append_extra_prompt
+
 from scout_agent.runtime.audit.reporting import PlainAuditProgressReporter
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,7 @@ def _run_file_audit(
         offset: int = 0,
         limit: int = 2000,
     ) -> str:
-        """Read a file from the local filesystem."""
+        """Read a file from the local filesystem. Defaults: offset=0, limit=2000."""
         try:
             return backend.read(file_path, offset=offset, limit=limit)
         except Exception as exc:
