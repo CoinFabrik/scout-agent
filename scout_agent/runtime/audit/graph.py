@@ -5,8 +5,16 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from deepagents import create_deep_agent
+from langchain.agents import create_agent
+from langchain_anthropic.middleware import AnthropicPromptCachingMiddleware
+from langchain_core.messages import HumanMessage
 
+from deepagents.graph import BASE_AGENT_PROMPT
+from deepagents.middleware import (
+    SubAgentMiddleware,
+)
+from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
+from deepagents.middleware.summarization import create_summarization_middleware
 from scout_agent.domain.audit import AuditState, FileAuditResponse, Finding
 from scout_agent.domain.facts import (
     FactsDocument,
@@ -20,6 +28,7 @@ from scout_agent.runtime.audit.audit_prompts import (
     PARENT_SYSTEM_PROMPT,
     build_parent_audit_prompt,
     build_parent_system_prompt,
+    get_supervisor_few_shots,
 )
 from scout_agent.runtime.audit.dump import AuditDumpWriter, extract_message_text
 from scout_agent.runtime.audit.experts import (
@@ -28,7 +37,8 @@ from scout_agent.runtime.audit.experts import (
     build_expert_subagents,
 )
 from scout_agent.runtime.audit.prompt_utils import append_extra_prompt
-from scout_agent.runtime.audit.reporting import AuditProgressReporter
+
+from scout_agent.runtime.audit.reporting import PlainAuditProgressReporter
 
 logger = logging.getLogger(__name__)
 
@@ -56,13 +66,6 @@ def run_audit(
     file_fact_index = build_file_fact_index(runtime.facts_document)
     total_files = len(state["files_to_review"])
     allowed_paths = list(state["files_to_review"])
-    expert_subagents = build_expert_subagents(
-        model_name=runtime.model_name,
-        llm_mode=runtime.llm_mode,
-        project_root=runtime.project_root,
-        allowed_paths=allowed_paths,
-        extra_prompt=runtime.extra_prompt,
-    )
 
     reporter.started(
         project_root=runtime.project_root,
@@ -73,6 +76,15 @@ def run_audit(
 
     while state["files_to_review"]:
         current_file = state["files_to_review"][0]
+
+        expert_subagents = build_expert_subagents(
+            model_name=runtime.model_name,
+            llm_mode=runtime.llm_mode,
+            project_root=runtime.project_root,
+            allowed_paths=allowed_paths,
+            extra_prompt=runtime.extra_prompt,
+        )
+
         if runtime.dump_writer is not None:
             runtime.dump_writer.file_started(relative_path=current_file)
         reporter.file_started(
@@ -137,14 +149,49 @@ def _run_file_audit(
         all_facts=runtime.facts_document.functions,
         extra_prompt=runtime.extra_prompt,
     )
-    agent = create_deep_agent(
-        name="scout-agent",
-        model=build_chat_model(runtime.model_name, runtime.llm_mode),
-        system_prompt=system_prompt,
+
+    model = build_chat_model(runtime.model_name, runtime.llm_mode)
+
+    # Strictly define the supervisor's toolset.
+    # We do NOT use FilesystemMiddleware here to physically strip ls, grep, glob, etc.
+    # Instead, we provide only the read_file tool.
+    def read_file(
+        file_path: str,
+        offset: int = 0,
+        limit: int = 2000,
+    ) -> str:
+        """Read a file from the local filesystem. Defaults: offset=0, limit=2000."""
+        try:
+            return backend.read(file_path, offset=offset, limit=limit)
+        except Exception as exc:
+            return f"Error: {exc}"
+
+    subagent_middleware = SubAgentMiddleware(
         backend=backend,
-        subagents=expert_subagents,
-        response_format=FileAuditResponse,
+        subagents=expert_subagents,  # type: ignore
     )
+
+    middleware_stack = [
+        subagent_middleware,
+        create_summarization_middleware(model, backend),
+        AnthropicPromptCachingMiddleware(unsupported_model_behavior="ignore"),
+        PatchToolCallsMiddleware(),
+    ]
+
+    # Prepend system_prompt to BASE_AGENT_PROMPT as create_deep_agent does
+    final_system_prompt = system_prompt + "\n\n" + BASE_AGENT_PROMPT
+    # Escape braces for potential LangChain prompt template interpolation
+    escaped_system_prompt = final_system_prompt.replace("{", "{{").replace("}", "}}")
+
+    agent = create_agent(
+        model=model,
+        system_prompt=escaped_system_prompt,
+        middleware=middleware_stack,
+        tools=[read_file],
+        response_format=FileAuditResponse,
+        name="scout-agent",
+    ).with_config({"recursion_limit": 1000})
+
     prompt = build_parent_audit_prompt(
         current_file=current_file,
         extra_prompt=runtime.extra_prompt,
@@ -155,10 +202,13 @@ def _run_file_audit(
         current_file=current_file,
         dump_writer=runtime.dump_writer,
     )
+    few_shots = get_supervisor_few_shots()
+    messages = few_shots + [HumanMessage(content=prompt)]
+
     if runtime.dump_writer is not None:
         runtime.dump_writer.supervisor_started(relative_path=current_file)
     result = agent.invoke(
-        {"messages": [{"role": "user", "content": prompt}]},
+        {"messages": messages},
         config={"callbacks": [callback_handler]},
     )
     final_message_text = _extract_final_message_text(result)

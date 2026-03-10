@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from typing import Any
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+
 from scout_agent.domain.facts import (
     FunctionSummary,
     file_path_from_function_key,
@@ -11,26 +14,205 @@ PARENT_SYSTEM_PROMPT = """You are the supervisor for a Soroban smart-contract au
 
 Your sole responsibility is to read and understand the file, then decide which specialist subagents if any are needed to audit it.
 
-You do not produce findings. You do not audit. You only delegate.
+**CRITICAL RULES:**
+1. **ROUTER ONLY:** You have ZERO authority to produce findings yourself. You do not audit. You only delegate.
+2. **NO GENERAL FINDINGS:** You MUST NOT report general vulnerabilities like Reentrancy, Division by Zero, or Overflow. These are OUT OF SCOPE.
+3. **ONLY SPECIALISTS:** You MUST ONLY use the three specialist subagents. Do NOT use any general `task` or `explore` tools.
+4. **EVIDENCE-BASED DELEGATION:** Only call a subagent if you identify a CLEAR PATTERN matching its focus area.
+5. **FORBIDDEN TOOLS:** The `task` tool is strictly FORBIDDEN. You must only use the specialist subagents provided.
 
 ## Available Specialist Subagents
-- `execution_path_consistency` — conflicting control flows, unreachable branches, or reentrancy across call paths
-- `collection_validation` — map/vec access patterns, missing key guards, or unbounded iteration risks
-- `time_state` — ledger timestamp or sequence-number dependencies that affect state transitions
-- `sentinel_logic` — flag/sentinel value misuse, off-by-one conditions, or boundary invariant violations
+- `collection_validation` — Trigger: Input Vec/Map used in loops or for calculations without explicit duplicate/uniqueness checks.
+- `time_state` — Trigger: State updates that depend on ledger time/sequence where the update order is suspicious.
+- `sentinel_logic` — Trigger: Use of special values (0, u32::MAX) to represent states without consistent handling across all functions.
 
 ## Your Process
-1. Read the file thoroughly.
-2. Identify which concern areas are actually present in the code.
-3. Delegate only to the subagents relevant to what you found.
-4. If no specialist is needed, return nothing.
-
-## Rules
-- Do not produce audit findings, notes, or summaries.
-- Do not use the built-in `general-purpose` subagent.
-- Delegate only when the file contains code that genuinely warrants specialist review.
-- Do not delegate speculatively or as a default step — if a concern area is absent from the file, skip that subagent entirely.
+1. Read the file thoroughly using the provided tools.
+2. Identify if any of the specific "Triggers" above are present.
+3. If a trigger is found, call the relevant specialist.
+4. When calling a specialist, you MUST provide a "Specialist Brief" with:
+   - **Target:** The specific function or line numbers.
+   - **Pattern:** Describe the exact suspicious code pattern you found.
+   - **Question:** The specific doubt you want the specialist to verify.
+5. If no specialists return findings, your final response must be empty.
 """
+
+
+def get_supervisor_few_shots() -> list[Any]:
+    return [
+        HumanMessage(
+            content="Audit the current file: src/token.rs\n\nInstructions: Audit only the current file. Delegate to specialists for deep dives. Return only concrete findings."
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "read_file",
+                    "args": {"file_path": "src/token.rs"},
+                    "id": "call_sup_1",
+                }
+            ],
+        ),
+        ToolMessage(
+            tool_call_id="call_sup_1",
+            content="pub fn transfer(e: Env, from: Address, to: Address, amount: i128) {\n    from.require_auth();\n    let balance = get_balance(&e, &from);\n    if amount > balance { panic!(\"insufficient balance\"); }\n    set_balance(&e, &from, balance - amount);\n    set_balance(&e, &to, get_balance(&e, &to) + amount);\n}",
+        ),
+        AIMessage(
+            content="I have analyzed src/token.rs. The `transfer` function lacks a check for zero `amount`, which is a general arithmetic concern and out of scope. I also see a potential reentrancy risk if `set_balance` emitted events before state changes, but that is also out of scope. I found no patterns matching the three specialist triggers. I will not delegate any tasks.",
+        ),
+        HumanMessage(
+            content="Audit the current file: src/vault.rs\n\nInstructions: Audit only the current file. Delegate to specialists for deep dives. Return only concrete findings."
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "read_file",
+                    "args": {"file_path": "src/vault.rs"},
+                    "id": "call_sup_2",
+                }
+            ],
+        ),
+        ToolMessage(
+            tool_call_id="call_sup_2",
+            content="pub fn deposit(e: Env, user: Address, amount: Vec<i128>) {\n    let mut total = 0;\n    for a in amount.iter() {\n        total += a;\n    }\n    let mut balance = balances.get(user).unwrap_or(0);\n    balances.set(user, balance + total);\n}",
+        ),
+        AIMessage(
+            content="In src/vault.rs, the `deposit` function takes a `Vec<i128>` and sums the elements without checking if the same element (or index) is processed multiple times, which might be fine for values but suspicious for collections. This matches the `collection_validation` trigger.",
+            tool_calls=[
+                {
+                    "name": "task",
+                    "args": {
+                        "subagent_type": "collection_validation",
+                        "description": "Specialist Brief:\n- Target: `deposit` function in src/vault.rs\n- Pattern: Input `Vec` used in a loop for balance calculation.\n- Question: Verify if duplicate elements in the vector could cause inflated balance updates.",
+                    },
+                    "id": "call_sup_3",
+                }
+            ],
+        ),
+        ToolMessage(
+            tool_call_id="call_sup_3",
+            content='{"status": "VULNERABLE", "finding": {"pattern": "Unvalidated collection input", "severity": "MEDIUM", "location": "src/vault.rs:3", "description": "...", "evidence": "..."}}',
+        ),
+        AIMessage(
+            content="",
+        ),
+    ]
+
+
+def get_expert_few_shots(expert_name: str) -> list[Any]:
+    if expert_name == "sentinel_logic":
+        return [
+            HumanMessage(
+                content="Specialist Brief:\n- Target: `claim_reward` in src/rewards.rs\n- Pattern: `reward_id` handling.\n- Question: Check if sentinel values for uninitialized states are handled."
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "grep",
+                        "args": {"pattern": "struct.*Reward", "path": "src/storage.rs"},
+                        "id": "call_exp_0",
+                    }
+                ],
+            ),
+            ToolMessage(
+                tool_call_id="call_exp_0",
+                content="src/storage.rs:45: struct RewardState {\nsrc/storage.rs:46:     reward_id: u32,",
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "read_code_chunk",
+                        "args": {"file": "src/rewards.rs", "start_line": 1},
+                        "id": "call_exp_1",
+                    }
+                ],
+            ),
+            ToolMessage(
+                tool_call_id="call_exp_1",
+                content="   1: pub fn claim_reward(e: Env, reward_id: u32) {\n   2:     if reward_id == 0 { panic!(\"invalid id\"); }\n   3:     let reward = rewards.get(reward_id).unwrap();\n   4: }",
+            ),
+            AIMessage(
+                content="I grepped for the reward structure and found its definition in storage.rs. Then I checked the handling of `reward_id` in rewards.rs. It is checked against `0` at line 2. The sentinel handling for `reward_id` is correct. The logic is safe.",
+            ),
+        ]
+    elif expert_name == "collection_validation":
+        return [
+            HumanMessage(
+                content="Specialist Brief:\n- Target: `deposit` in src/vault.rs\n- Pattern: `amount` Vec summation.\n- Question: Verify if duplicate elements cause issues."
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "grep",
+                        "args": {"pattern": "Vec<.*>", "path": "src/vault.rs"},
+                        "id": "call_exp_col_0",
+                    }
+                ],
+            ),
+            ToolMessage(
+                tool_call_id="call_exp_col_0",
+                content="src/vault.rs:1: pub fn deposit(e: Env, user: Address, amount: Vec<i128>) {",
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "read_code_chunk",
+                        "args": {"file": "src/vault.rs", "start_line": 1},
+                        "id": "call_exp_2",
+                    }
+                ],
+            ),
+            ToolMessage(
+                tool_call_id="call_exp_2",
+                content="   1: pub fn deposit(e: Env, user: Address, amount: Vec<i128>) {\n   2:     let mut total = 0;\n   3:     for a in amount.iter() {\n   4:         total += a;\n   5:     }\n   6: }",
+            ),
+            AIMessage(
+                content="I analyzed the loop at line 3. It iterates over `amount` elements. While duplicates would increase the `total`, this is a vector of values, not addresses or unique identifiers. The collection usage is safe for this pattern.",
+            ),
+        ]
+    elif expert_name == "time_state":
+        return [
+            HumanMessage(
+                content="Specialist Brief:\n- Target: `update_pool` in src/rewards.rs\n- Pattern: State update order.\n- Question: Verify if update order relative to time is safe."
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "grep",
+                        "args": {"pattern": "fn update_pool", "path": "src/rewards.rs"},
+                        "id": "call_exp_time_0",
+                    }
+                ],
+            ),
+            ToolMessage(
+                tool_call_id="call_exp_time_0",
+                content="src/rewards.rs:100: pub fn update_pool(e: Env) {",
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "read_code_chunk",
+                        "args": {"file": "src/rewards.rs", "start_line": 100},
+                        "id": "call_exp_3",
+                    }
+                ],
+            ),
+            ToolMessage(
+                tool_call_id="call_exp_3",
+                content=" 100: pub fn update_pool(e: Env) {\n 101:     let mut state = get_state(&e);\n 102:     state.total_rewards += 100;\n 103:     state.last_update = e.ledger().timestamp();\n 104:     set_state(&e, state);\n 105: }",
+            ),
+            AIMessage(
+                content="I checked the order of operations. The `last_update` is set at line 103, *after* rewards are added at line 102. The update order is safe here as it is atomic state change.",
+            ),
+        ]
+    return []
 
 
 def build_parent_system_prompt(
@@ -59,6 +241,7 @@ def build_parent_system_prompt(
     return append_extra_prompt(full_system_prompt, extra_prompt)
 
 
+
 def build_parent_audit_prompt(
     *,
     current_file: str,
@@ -69,7 +252,7 @@ def build_parent_audit_prompt(
         "Instructions:\n"
         "- Audit only the current file.\n"
         "- Use built-in file tools only for the current file when needed.\n"
-        "- Delegate to the four specialist subagents only when deeper review is needed.\n"
+        "- Delegate to the three specialist subagents only when deeper review is needed.\n"
         "- If you call a specialist, include the current file path, relevant facts, and the exact concern.\n"
         "- Return only deduped concrete findings in the structured response.\n"
     )

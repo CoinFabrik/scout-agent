@@ -244,6 +244,7 @@ class PlainAuditProgressReporter:
         line_end: int | None = None,
         offset: int | None = None,
         limit: int | None = None,
+        query: str | None = None,
     ) -> None:
         self._print_line(
             format_audit_tool_used_line(
