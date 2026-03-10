@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from typing import Any
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+
 from scout_agent.domain.facts import (
     FunctionSummary,
     file_path_from_function_key,
@@ -11,26 +14,70 @@ PARENT_SYSTEM_PROMPT = """You are the supervisor for a Soroban smart-contract au
 
 Your sole responsibility is to read and understand the file, then decide which specialist subagents if any are needed to audit it.
 
-You do not produce findings. You do not audit. You only delegate.
+**CRITICAL RULES:**
+1. **ROUTER ONLY:** You have ZERO authority to produce findings yourself. You do not audit. You only delegate.
+2. **NO GENERAL FINDINGS:** You MUST NOT report general vulnerabilities like Reentrancy, Division by Zero, or Overflow. These are OUT OF SCOPE.
+3. **ONLY SPECIALISTS:** You MUST ONLY use the three specialist subagents. Do NOT use any general `task` or `explore` tools.
+4. **EVIDENCE-BASED DELEGATION:** Only call a subagent if you identify a CLEAR PATTERN matching its focus area.
+5. **FORBIDDEN TOOLS:** The `task` tool is strictly FORBIDDEN. You must only use the specialist subagents provided.
 
 ## Available Specialist Subagents
-- `execution_path_consistency` — conflicting control flows, unreachable branches, or reentrancy across call paths
-- `collection_validation` — map/vec access patterns, missing key guards, or unbounded iteration risks
-- `time_state` — ledger timestamp or sequence-number dependencies that affect state transitions
-- `sentinel_logic` — flag/sentinel value misuse, off-by-one conditions, or boundary invariant violations
+- `collection_validation` — Trigger: Input Vec/Map used in loops or for calculations without explicit duplicate/uniqueness checks.
+- `time_state` — Trigger: State updates that depend on ledger time/sequence where the update order is suspicious.
+- `sentinel_logic` — Trigger: Use of special values (0, u32::MAX) to represent states without consistent handling across all functions.
 
 ## Your Process
-1. Read the file thoroughly.
-2. Identify which concern areas are actually present in the code.
-3. Delegate only to the subagents relevant to what you found.
-4. If no specialist is needed, return nothing.
-
-## Rules
-- Do not produce audit findings, notes, or summaries.
-- Do not use the built-in `general-purpose` subagent.
-- Delegate only when the file contains code that genuinely warrants specialist review.
-- Do not delegate speculatively or as a default step — if a concern area is absent from the file, skip that subagent entirely.
+1. Read the file thoroughly using the provided tools.
+2. Identify if any of the specific "Triggers" above are present.
+3. If a trigger is found, call the relevant specialist.
+4. When calling a specialist, you MUST provide a "Specialist Brief" with:
+   - **Target:** The specific function or line numbers.
+   - **Pattern:** Describe the exact suspicious code pattern you found.
+   - **Question:** The specific doubt you want the specialist to verify.
+5. If no specialists return findings, your final response must be empty.
 """
+
+
+def get_supervisor_few_shots() -> list[Any]:
+    return [
+        HumanMessage(
+            content="Audit the current file: src/token.rs\n\nInstructions: [standard instructions]"
+        ),
+        AIMessage(
+            content="I have analyzed src/token.rs. I observed that the `transfer` function does not check if the `amount` is zero. However, general arithmetic bugs are out of scope. I found no patterns matching the three specialist triggers. I will not delegate any tasks."
+        ),
+    ]
+
+
+def get_expert_few_shots(expert_name: str) -> list[Any]:
+    if expert_name == "sentinel_logic":
+        return [
+            HumanMessage(
+                content="Specialist Brief: Check function `claim_reward` at line 120 for sentinel value handling of `reward_id`."
+            ),
+            AIMessage(
+                content="I checked the handling of `reward_id`. It is checked against `u32::MAX` at line 122, which is the correct sentinel value. The logic is safe. I also saw a reentrancy bug at line 125, but I will ignore it as it is out of my scope.",
+            ),
+        ]
+    elif expert_name == "collection_validation":
+        return [
+            HumanMessage(
+                content="Specialist Brief: Check `batch_transfer` at line 50 for duplicate address validation in the `recipients` vector."
+            ),
+            AIMessage(
+                content="I analyzed the loop at line 55. It iterates over `recipients` without checking for duplicates. This is a finding. I also noticed a missing access control check, but I will ignore it as it is out of my scope.",
+            ),
+        ]
+    elif expert_name == "time_state":
+        return [
+            HumanMessage(
+                content="Specialist Brief: Verify if `update_pool` at line 300 correctly updates the `last_reward_timestamp` before modifying the `total_staked`."
+            ),
+            AIMessage(
+                content="I checked the order of operations. The `last_reward_timestamp` is updated *after* the `total_staked` is modified. This is a finding. I also saw a division by zero risk, but I will ignore it as it is out of my scope.",
+            ),
+        ]
+    return []
 
 
 def build_parent_system_prompt(
@@ -59,6 +106,7 @@ def build_parent_system_prompt(
     return append_extra_prompt(full_system_prompt, extra_prompt)
 
 
+
 def build_parent_audit_prompt(
     *,
     current_file: str,
@@ -69,7 +117,7 @@ def build_parent_audit_prompt(
         "Instructions:\n"
         "- Audit only the current file.\n"
         "- Use built-in file tools only for the current file when needed.\n"
-        "- Delegate to the four specialist subagents only when deeper review is needed.\n"
+        "- Delegate to the three specialist subagents only when deeper review is needed.\n"
         "- If you call a specialist, include the current file path, relevant facts, and the exact concern.\n"
         "- Return only deduped concrete findings in the structured response.\n"
     )

@@ -8,77 +8,27 @@ from typing import Any
 from deepagents import CompiledSubAgent
 from langchain.agents import create_agent
 
+from langchain_core.messages import AIMessage, HumanMessage
 from scout_agent.domain.audit import ExpertResult, ExpertTypeEnum
 from scout_agent.llm.providers import build_chat_model
+from scout_agent.runtime.audit.audit_prompts import get_expert_few_shots
 from scout_agent.runtime.audit.prompt_utils import append_extra_prompt
 from scout_agent.runtime.audit.tools import (
     EXPERT_READ_MAX_LINES,
     read_sanitized_code_chunk,
 )
 
-EXECUTION_PATH_CONSISTENCY_PROMPT = """Focus: execution path consistency.
-
-A RESTRICTION can be BYPASSED through a different code path that performs 
-the SAME OPERATION or contains the restricted operation.
-
-Two scenarios to check:
-
-**Scenario 1 - Function Containment:**
-- Function A has a restriction (authorization, pause check, rate limit, etc.)
-- Function B appears to do a different operation but internally calls or contains Function A
-- By calling Function B, users bypass Function A's restriction
-
-**Scenario 2 - Same Operation, Inconsistent Paths:**
-- Function A and Function B perform the SAME operation
-- Function A has restriction R
-- Function B does NOT have restriction R
-- Users can bypass restriction via the unrestricted path
-
-**Auditing Strategy:**
-To find inconsistencies, do not just compare similar-looking functions. Instead:
-1. Identify a sensitive state change (e.g., updating a user's debt or balance).
-2. Find the "primary" function that performs this change and note its restrictions (e.g., "Must not be paused").
-3. Search the entire codebase for all other functions that perform that same state change.
-4. Verify if any identified path skips the restrictions found in the primary function.
-
-What NOT to report:
-- A function with NO restrictions at all (that's just "missing restriction")
-
-**Examples:**
-
-```rust
-// Scenario 1 - Function Containment
-// Function A - WITH restriction
-fn withdraw(amount: i128) {
-    require(!is_paused());  // ✓ Blocked when paused
-    balances.subtract(amount);
-}
-
-// Function B - DIFFERENT operation but contains Function A's logic
-fn swap_and_withdraw(token: Address, amount: i128) {
-    swap(token, amount);
-    // Contains withdraw logic WITHOUT pause check!
-    balances.subtract(amount);  // Bypasses pause!
-}
-
-// Scenario 2 - Same Operation, Inconsistent Paths
-fn transfer(to: Address, amount: i128) {
-    require_auth();  // ✓ Validates caller
-    balances.transfer(&to, amount);
-}
-
-fn transfer_batch(transfers: Vec<(Address, i128)>) {
-    // Same operation but NO auth check!
-    for t in transfers {
-        balances.transfer(&t.0, t.1);  // Inconsistent!
-    }
-}
-```
-"""
-
 COLLECTION_VALIDATION_PROMPT = """Focus: array duplicate validation.
 
 Validate no duplicate elements in arrays/vectors that could cause inflated calculations.
+
+**STRICT SCOPE:** 
+You are a specialist. You are strictly forbidden from reporting issues like reentrancy, inconsistent paths, or general logic bugs. Focus ONLY on collection duplicates.
+
+**YOUR MISSION:**
+1. Focus first on the **Specialist Brief** provided by the supervisor.
+2. Validate or invalidate the specific suspicious pattern and lines mentioned in the brief.
+3. If the collections are correctly validated regarding the supervisor's lead, report 'No findings'.
 
 **Example:**
 ```rust
@@ -107,6 +57,14 @@ fn vote_safe(token_ids: Vec<Address>, proposal_id: u32, votes: Vec<i128>) {
 TIME_STATE_PROMPT = """Focus: time-dependent state update order.
 
 State changes affecting time-dependent logic must trigger update BEFORE modification.
+
+**STRICT SCOPE:** 
+You are a specialist. You are strictly forbidden from reporting issues like access control, duplicate vector elements, or general smart contract bugs.
+
+**YOUR MISSION:**
+1. Focus first on the **Specialist Brief** provided by the supervisor.
+2. Validate or invalidate the specific suspicious pattern and lines mentioned in the brief.
+3. If the update order is correct regarding the supervisor's lead, report 'No findings'.
 
 **Example:**
 ```rust
@@ -155,6 +113,14 @@ SENTINEL_LOGIC_PROMPT = """Focus: sentinel value handling.
 Verify sentinel values (0, u32::MAX, etc.) marking disabled/uninitialized are
 handled by all functions.
 
+**STRICT SCOPE:** 
+You are a specialist. You are strictly forbidden from reporting issues like time-dependent logic, reentrancy, or collection duplicates.
+
+**YOUR MISSION:**
+1. Focus first on the **Specialist Brief** provided by the supervisor.
+2. Validate or invalidate the specific suspicious pattern and lines mentioned in the brief.
+3. If the sentinel logic is correct regarding the supervisor's lead, report 'No findings'.
+
 **Example:**
 ```rust
 // Using u32::MAX to mark "no reserve assigned"
@@ -188,11 +154,6 @@ class SubagentPromptSpec:
 
 SUBAGENT_MANIFEST: tuple[SubagentPromptSpec, ...] = (
     SubagentPromptSpec(
-        name=ExpertTypeEnum.EXECUTION_PATH_CONSISTENCY.value,
-        description="Audit state mutation paths for inconsistent validation or authorization.",
-        system_prompt=EXECUTION_PATH_CONSISTENCY_PROMPT,
-    ),
-    SubagentPromptSpec(
         name=ExpertTypeEnum.COLLECTION_VALIDATION.value,
         description="Audit vector or array inputs for missing uniqueness or duplicate-safe validation.",
         system_prompt=COLLECTION_VALIDATION_PROMPT,
@@ -223,9 +184,23 @@ def build_expert_subagents(
 
     for spec in SUBAGENT_MANIFEST:
         system_prompt = append_extra_prompt(spec.system_prompt, extra_prompt)
+
+        few_shots = get_expert_few_shots(spec.name)
+
+        # Convert few-shot messages to a text block since create_agent expects a string system_prompt
+        few_shot_text = "\n\n## Example Session\n"
+        for msg in few_shots:
+            role = "USER" if isinstance(msg, HumanMessage) else "ASSISTANT"
+            few_shot_text += f"\n### {role}:\n{msg.content}\n"
+
+        full_prompt = f"{system_prompt}{few_shot_text}"
+
+        # Escape braces for LangChain prompt template interpolation
+        escaped_system_prompt = full_prompt.replace("{", "{{").replace("}", "}}")
+
         runnable = create_agent(
             model=model,
-            system_prompt=system_prompt,
+            system_prompt=escaped_system_prompt,
             tools=[
                 _build_read_code_chunk_tool(
                     project_root=project_root,
@@ -251,20 +226,37 @@ def _build_read_code_chunk_tool(
     project_root: Path,
     allowed_paths: Collection[str],
 ) -> Any:
+    # State to track call counts per (file, start_line) to prevent loops
+    call_counts: dict[str, int] = {}
+
     def read_code_chunk(
         file: str,
         start_line: int = 1,
         max_lines: int = EXPERT_READ_MAX_LINES,
     ) -> str:
         """Read up to 100 lines of sanitized source code from an in-scope file."""
+        requested_file = Path(file.strip()).as_posix()
+        call_key = f"{requested_file}:{start_line}"
+
+        count = call_counts.get(call_key, 0)
+        if count >= 2:
+            return (
+                f"REPETITION DETECTED: You have already read {requested_file} starting at line {start_line} multiple times. "
+                "To see more code, you MUST increment your `start_line` (e.g., to "
+                f"{start_line + max_lines}). If you have already read the relevant code and cannot find a finding, "
+                "return 'No findings' and explain why in your thought block."
+            )
+
         try:
-            return read_sanitized_code_chunk(
+            content = read_sanitized_code_chunk(
                 project_root,
                 file,
                 allowed_paths=allowed_paths,
                 start_line=start_line,
                 max_lines=max_lines,
             )
+            call_counts[call_key] = count + 1
+            return content
         except (ValueError, FileNotFoundError) as exc:
             return f"Error: {exc}"
 
