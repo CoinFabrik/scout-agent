@@ -1,4 +1,6 @@
-from __future__ import annotations
+from pydantic import ConfigDict
+from langchain.agents.structured_output import SchemaT
+from typing import Generic
 from typing import Literal, TypedDict
 
 from pydantic import BaseModel
@@ -11,6 +13,7 @@ FinalDedupStatus = Literal["not_run", "applied", "skipped"]
 
 
 class Finding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     pattern: str = Field(min_length=1)
     severity: Severity
     location: str = Field(min_length=1)
@@ -18,7 +21,14 @@ class Finding(BaseModel):
     evidence: str = Field(min_length=1)
 
 
+class ProviderStrategy(Generic[SchemaT]):
+
+    schema: type[SchemaT]
+    strict: bool | None = None
+
+
 class ExpertResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     status: ExpertStatus
     finding: Finding | None = None
 

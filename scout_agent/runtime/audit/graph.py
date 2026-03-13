@@ -158,14 +158,12 @@ def run_audit(
     with ThreadPoolExecutor(max_workers=runtime.max_parallel_files + 1) as executor:
         active: dict[Future[_CompletedFileAudit], _AuditTask] = {}
         runtime.reporter.execution_path_consistency_started()
-        execution_path_consistency_future: Future[
-            _CompletedExecutionPathConsistencyAudit
-        ] | None = (
-            executor.submit(
-                _run_execution_path_consistency_task,
-                runtime=runtime,
-                allowed_paths=allowed_paths,
-            )
+        execution_path_consistency_future: (
+            Future[_CompletedExecutionPathConsistencyAudit] | None
+        ) = executor.submit(
+            _run_execution_path_consistency_task,
+            runtime=runtime,
+            allowed_paths=allowed_paths,
         )
 
         while (
@@ -414,7 +412,6 @@ def _run_file_audit(
                 subagents=expert_subagents,  # type: ignore[arg-type]
             ),
             create_summarization_middleware(model, backend),
-            AnthropicPromptCachingMiddleware(unsupported_model_behavior="ignore"),
             PatchToolCallsMiddleware(),
         ],
         tools=[read_file],
@@ -428,6 +425,7 @@ def _run_file_audit(
         current_file=current_file,
         dump_writer=runtime.dump_writer,
     )
+
     messages = get_supervisor_few_shots() + [
         HumanMessage(
             content=build_parent_audit_prompt(
@@ -807,7 +805,8 @@ def _grep_allowed_paths(
         search_paths = [
             candidate
             for candidate in allowed_paths
-            if candidate == normalized_path or candidate.startswith(f"{normalized_path}/")
+            if candidate == normalized_path
+            or candidate.startswith(f"{normalized_path}/")
         ]
         if not search_paths:
             raise ValueError(f"Path '{path}' is not in scope or does not exist.")

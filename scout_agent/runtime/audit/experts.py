@@ -1,11 +1,11 @@
-from __future__ import annotations
+from langchain.agents.structured_output import ProviderStrategy
 
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from deepagents import CompiledSubAgent
+from deepagents import CompiledSubAgent, create_deep_agent
 from langchain.agents import create_agent
 
 from scout_agent.domain.audit import ExpertResult
@@ -15,6 +15,7 @@ from scout_agent.runtime.audit.tools import (
     EXPERT_READ_MAX_LINES,
     read_sanitized_code_chunk,
 )
+
 
 @dataclass(frozen=True, slots=True)
 class SubagentPromptSpec:
@@ -70,12 +71,11 @@ def build_expert_subagents(
 
         # Escape braces for LangChain prompt template interpolation
         escaped_system_prompt = full_prompt.replace("{", "{{").replace("}", "}}")
-
         runnable = create_agent(
             model=model,
             system_prompt=escaped_system_prompt,
             tools=shared_tools,
-            response_format=ExpertResult,
+            response_format=ProviderStrategy(ExpertResult, strict=True),
             name=spec.name,
         ).with_config({"recursion_limit": recursion_limit})
         subagents.append(
@@ -178,7 +178,8 @@ def _build_grep_tool(
         if path:
             norm_path = Path(path.strip()).as_posix()
             search_paths = [
-                p for p in allowed_paths
+                p
+                for p in allowed_paths
                 if p == norm_path or p.startswith(norm_path + "/")
             ]
             if not search_paths:
