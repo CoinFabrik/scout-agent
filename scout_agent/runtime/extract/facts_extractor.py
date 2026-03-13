@@ -26,6 +26,15 @@ EXTRACTION_RETRY_NOTE = (
 )
 
 
+def build_extraction_retrying() -> Retrying:
+    return Retrying(
+        retry=retry_if_exception_type(RetryableExtractionError),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential_jitter(initial=1, max=8),
+        reraise=True,
+    )
+
+
 def extract_file_facts_with_llm(
     parsed_file: ParsedRustFile,
     *,
@@ -40,13 +49,9 @@ def extract_file_facts_with_llm(
     structured_model = model.with_structured_output(
         FileFactsExtractionResponse,
         method="json_schema",
+        strict=True,
     )
-    for attempt in Retrying(
-        retry=retry_if_exception_type(RetryableExtractionError),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential_jitter(initial=1, max=8),
-        reraise=True,
-    ):
+    for attempt in build_extraction_retrying():
         with attempt:
             retry_note = (
                 EXTRACTION_RETRY_NOTE
@@ -224,13 +229,14 @@ def _extract_file_facts_once(
             f"{parsed_file.relative_path}: {exc}"
         ) from exc
 
-    try:
-        response = FileFactsExtractionResponse.model_validate(response)
-    except ValidationError as exc:
-        raise RetryableExtractionError(
-            "Extraction response failed schema validation for "
-            f"{parsed_file.relative_path}: {exc}"
-        ) from exc
+    if not isinstance(response, FileFactsExtractionResponse):
+        try:
+            response = FileFactsExtractionResponse.model_validate(response)
+        except ValidationError as exc:
+            raise RetryableExtractionError(
+                "Extraction response failed schema validation for "
+                f"{parsed_file.relative_path}: {exc}"
+            ) from exc
 
     return _merge_extracted_file_facts(
         relative_path=parsed_file.relative_path,

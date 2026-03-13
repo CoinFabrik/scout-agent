@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TextIO
 
 
-class PlainExtractProgressReporter:
+class ExtractProgressReporter:
     def __init__(self, stdout: TextIO) -> None:
         self._stdout = stdout
 

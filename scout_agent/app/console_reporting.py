@@ -17,7 +17,6 @@ from scout_agent.runtime.audit.reporting import (
     PlainAuditProgressSink,
 )
 from scout_agent.runtime.extract.models import ExtractFactsPipelineResult
-from scout_agent.runtime.extract.reporting import PlainExtractProgressReporter
 
 
 class ConsoleOutput:
@@ -29,9 +28,6 @@ class ConsoleOutput:
     ) -> None:
         self._stdout = stdout or sys.stdout
         self._stderr = stderr or sys.stderr
-
-    def make_extract_progress_reporter(self) -> PlainExtractProgressReporter:
-        return PlainExtractProgressReporter(self._stdout)
 
     def make_audit_progress_session(
         self,

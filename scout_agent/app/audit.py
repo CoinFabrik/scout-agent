@@ -3,7 +3,7 @@ from __future__ import annotations
 from argparse import Namespace
 
 from scout_agent.app.audit_ui import AuditUiError
-from scout_agent.app.command_config import resolve_audit_config
+from scout_agent.app.settings import resolve_audit_config
 from scout_agent.app.console_reporting import ConsoleOutput
 from scout_agent.app.errors import CommandError
 from scout_agent.domain.audit import AuditState

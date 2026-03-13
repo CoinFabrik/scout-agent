@@ -1,8 +1,6 @@
-from __future__ import annotations
-
+from scout_agent.runtime.extract.reporting import ExtractProgressReporter
+from scout_agent.app.settings import resolve_extract_settings
 from argparse import Namespace
-
-from scout_agent.app.command_config import resolve_extract_config
 from scout_agent.app.console_reporting import ConsoleOutput
 from scout_agent.app.errors import CommandError
 from scout_agent.llm.providers import ProviderError
@@ -10,21 +8,12 @@ from scout_agent.runtime.extract.models import ExtractContext
 from scout_agent.runtime.extract.pipeline import run_extract_facts_pipeline
 
 
-def run_extract_facts_command(
-    args: Namespace,
-    *,
-    output: ConsoleOutput,
-) -> int:
+def run_extract_facts_command(args: Namespace, output: ConsoleOutput) -> int:
     try:
-        config = resolve_extract_config(args)
+        settings = resolve_extract_settings(args)
         context = ExtractContext(
-            project_root=config.project_root,
-            facts_path=config.facts_path,
-            model_name=config.model_name,
-            llm_mode=config.llm_mode,
-            scout_files=config.scout_files,
-            max_parallel_files=config.max_parallel_files,
-            reporter=output.make_extract_progress_reporter(),
+            settings=settings,
+            reporter=ExtractProgressReporter(output._stdout),
         )
 
         try:
