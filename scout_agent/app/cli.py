@@ -16,13 +16,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     extract_parser = subparsers.add_parser(
         "extract-facts",
-        help="Generate FACTS.yaml for a target project.",
+        help="Generate per-file facts plus aggregate FACTS.yml for a target project.",
     )
     _add_shared_arguments(extract_parser)
     extract_parser.add_argument(
         "--facts-path",
         default=None,
-        help="Optional output path for FACTS.yaml (default: <project_root>/FACTS.yaml).",
+        help="Optional output directory for per-file facts and aggregate FACTS.yml (default: <project_root>/.scout-ai/facts).",
     )
     extract_parser.add_argument(
         "--max-parallel-files",
@@ -33,13 +33,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     audit_parser = subparsers.add_parser(
         "audit",
-        help="Run the supervisor-worker audit using FACTS.yaml.",
+        help="Run the supervisor-worker audit plus execution_path_consistency using extracted facts.",
     )
     _add_shared_arguments(audit_parser)
     audit_parser.add_argument(
         "--facts-path",
         default=None,
-        help="Optional path to FACTS.yaml (default: <project_root>/FACTS.yaml).",
+        help="Optional path to the facts directory containing per-file facts and FACTS.yml (default: <project_root>/.scout-ai/facts).",
     )
     audit_parser.add_argument(
         "--report-path",
@@ -60,16 +60,13 @@ def build_parser() -> argparse.ArgumentParser:
     audit_parser.add_argument(
         "--dump-runtime",
         action="store_true",
-        help="Write incremental per-file runtime dump artifacts under <project_root>/.scout-ai/audit-dumps/.",
+        help="Write per-file runtime timeline Markdown under <project_root>/.scout-ai/audit-dumps/.",
     )
-
-    render_dump_parser = subparsers.add_parser(
-        "render-dump",
-        help="Render readable Markdown artifacts for an existing audit dump directory.",
-    )
-    render_dump_parser.add_argument(
-        "dump_dir",
-        help="Path to a .scout-ai/audit-dumps/<run-id> directory.",
+    audit_parser.add_argument(
+        "--max-parallel-files",
+        type=int,
+        default=None,
+        help="Maximum number of files to audit in parallel. Defaults to scout.json max_parallel_files or 4.",
     )
 
     return parser

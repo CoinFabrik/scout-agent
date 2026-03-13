@@ -1,22 +1,13 @@
 from __future__ import annotations
-from pydantic import BaseModel
-from pathlib import Path
-
-from enum import StrEnum
 from typing import Literal, TypedDict
 
+from pydantic import BaseModel
 from pydantic import Field, model_validator
-
-
-class ExpertTypeEnum(StrEnum):
-    EXECUTION_PATH_CONSISTENCY = "execution_path_consistency"
-    COLLECTION_VALIDATION = "collection_validation"
-    TIME_STATE = "time_state"
-    SENTINEL_LOGIC = "sentinel_logic"
 
 
 Severity = Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 ExpertStatus = Literal["VULNERABLE", "SAFE", "NEEDS_INFO"]
+FinalDedupStatus = Literal["not_run", "applied", "skipped"]
 
 
 class Finding(BaseModel):
@@ -44,10 +35,19 @@ class FileAuditResponse(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
 
 
+class FinalDedupGroup(BaseModel):
+    member_indices: list[int] = Field(min_length=1)
+
+
+class FinalDedupResponse(BaseModel):
+    groups: list[FinalDedupGroup] = Field(min_length=1)
+
+
 class AuditState(TypedDict):
-    project_root: Path
-    facts_path: Path
     files_to_review: list[str]
     files_reviewed: list[str]
+    execution_path_consistency_completed: bool
+    final_dedup_status: FinalDedupStatus
+    final_dedup_removed_count: int
+    pre_final_dedup_finding_count: int
     verified_findings: list[Finding]
-    finding_keys: list[str]

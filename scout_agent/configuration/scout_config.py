@@ -15,8 +15,8 @@ class ScoutConfig:
     model: str | None = None
     mode: str | None = None
     files: list[str] | None = None
-    contract_type: str | None = None
     max_parallel_files: int | None = None
+    recursion_limit: int | None = None
 
 
 def resolve_default_scout_config_path(project_root: Path) -> Path | None:
@@ -47,22 +47,22 @@ def load_scout_config(path: Path) -> ScoutConfig:
     if mode is not None and not isinstance(mode, str):
         raise ValueError("'mode' must be a string when provided in scout.json")
 
-    contract_type = _optional_non_empty_string(
-        payload.get("contract_type"),
-        field_name="contract_type",
-    )
     files = _optional_files(payload.get("files"))
     max_parallel_files = _optional_positive_int(
         payload.get("max_parallel_files"),
         field_name="max_parallel_files",
+    )
+    recursion_limit = _optional_positive_int(
+        payload.get("recursion_limit"),
+        field_name="recursion_limit",
     )
 
     return ScoutConfig(
         model=model,
         mode=normalize_llm_mode(mode),
         files=files,
-        contract_type=contract_type,
         max_parallel_files=max_parallel_files,
+        recursion_limit=recursion_limit,
     )
 
 

@@ -1,23 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
-from pathlib import Path
 from queue import Empty, Queue
 from threading import Thread
 from typing import Generic, Literal, Protocol, TypeVar, cast
 
-from scout_agent.domain.audit import Finding
 from scout_agent.runtime.audit.reporting import (
     AuditProgressReporter,
-    PlainAuditProgressReporter,
-    format_audit_expert_spawned_line,
-    format_audit_file_completed_line,
-    format_audit_file_started_line,
-    format_audit_finding_verified_line,
-    format_audit_started_line,
-    format_audit_tool_denied_line,
-    format_audit_tool_used_line,
+    AuditStatusSnapshot,
+    QueueAuditProgressSink,
 )
 
 AuditUiMode = Literal["tui", "plain"]
@@ -36,210 +27,21 @@ class AuditProgressSession(Protocol):
     def run(self, task: Callable[[], _ResultT]) -> _ResultT: ...
 
 
-@dataclass(frozen=True, slots=True)
-class AuditStatusSnapshot:
-    current_file: str = ""
-    reviewed: int = 0
-    total: int = 0
-    verified_findings: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class _AuditUiEvent:
-    line: str | None
-    status: AuditStatusSnapshot
-    close: bool = False
-
-
 class PlainAuditProgressSession:
-    def __init__(self, *, reporter: PlainAuditProgressReporter) -> None:
+    def __init__(self, *, reporter: AuditProgressReporter) -> None:
         self.reporter = reporter
-        self._closed = False
 
     def run(self, task: Callable[[], _ResultT]) -> _ResultT:
         try:
             return task()
         finally:
-            self._close_reporter()
-
-    def _close_reporter(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        self.reporter.close()
-
-
-class TextualAuditProgressReporter:
-    def __init__(
-        self,
-        *,
-        event_queue: Queue[_AuditUiEvent] | None = None,
-    ) -> None:
-        self._event_queue = event_queue or Queue()
-        self._status = AuditStatusSnapshot()
-        self._closed = False
-
-    @property
-    def event_queue(self) -> Queue[_AuditUiEvent]:
-        return self._event_queue
-
-    @property
-    def status_snapshot(self) -> AuditStatusSnapshot:
-        return self._status
-
-    def started(
-        self,
-        *,
-        project_root: Path,
-        total_files: int,
-        model_name: str,
-        llm_mode: str,
-    ) -> None:
-        self._status = replace(self._status, total=total_files)
-        self._emit(
-            line=format_audit_started_line(
-                project_root=project_root,
-                total_files=total_files,
-                model_name=model_name,
-                llm_mode=llm_mode,
-            )
-        )
-
-    def file_started(
-        self,
-        *,
-        index: int,
-        total: int,
-        current_file: str,
-    ) -> None:
-        self._status = replace(
-            self._status,
-            current_file=current_file,
-            total=total,
-        )
-        self._emit(
-            line=format_audit_file_started_line(
-                index=index,
-                total=total,
-                current_file=current_file,
-            )
-        )
-
-    def finding_verified(
-        self,
-        *,
-        total_verified_findings: int,
-        finding: Finding,
-    ) -> None:
-        self._status = replace(
-            self._status,
-            verified_findings=total_verified_findings,
-        )
-        self._emit(
-            line=format_audit_finding_verified_line(
-                total_verified_findings=total_verified_findings,
-                finding=finding,
-            )
-        )
-
-    def file_completed(
-        self,
-        *,
-        reviewed: int,
-        total: int,
-        current_file: str,
-    ) -> None:
-        self._status = replace(
-            self._status,
-            current_file=current_file,
-            reviewed=reviewed,
-            total=total,
-        )
-        self._emit(
-            line=format_audit_file_completed_line(
-                reviewed=reviewed,
-                total=total,
-                current_file=current_file,
-            )
-        )
-
-    def expert_spawned(
-        self,
-        *,
-        expert_name: str,
-    ) -> None:
-        self._emit(
-            line=format_audit_expert_spawned_line(
-                expert_name=expert_name,
-            )
-        )
-
-    def tool_used(
-        self,
-        *,
-        tool_name: str,
-        target: str,
-        expert_name: str | None = None,
-        line_start: int | None = None,
-        line_end: int | None = None,
-        offset: int | None = None,
-        limit: int | None = None,
-    ) -> None:
-        self._emit(
-            line=format_audit_tool_used_line(
-                tool_name=tool_name,
-                target=target,
-                expert_name=expert_name,
-                line_start=line_start,
-                line_end=line_end,
-                offset=offset,
-                limit=limit,
-            )
-        )
-
-    def tool_denied(
-        self,
-        *,
-        tool_name: str,
-        target: str,
-        current_file: str,
-        reason: str,
-        expert_name: str | None = None,
-    ) -> None:
-        self._emit(
-            line=format_audit_tool_denied_line(
-                tool_name=tool_name,
-                target=target,
-                current_file=current_file,
-                reason=reason,
-                expert_name=expert_name,
-            )
-        )
-
-    def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        self._event_queue.put(
-            _AuditUiEvent(
-                line=None,
-                status=self._status,
-                close=True,
-            )
-        )
-
-    def _emit(self, *, line: str) -> None:
-        self._event_queue.put(
-            _AuditUiEvent(
-                line=line,
-                status=self._status,
-            )
-        )
+            self.reporter.close()
 
 
 class TextualAuditProgressSession(Generic[_ResultT]):
     def __init__(self) -> None:
-        self.reporter = TextualAuditProgressReporter()
+        self._sink = QueueAuditProgressSink()
+        self.reporter = AuditProgressReporter(self._sink)
         self._result: object = _UNSET
         self._exception: BaseException | None = None
 
@@ -288,7 +90,7 @@ class TextualAuditProgressSession(Generic[_ResultT]):
                 "Textual UI requested but the 'textual' package is not installed."
             ) from exc
 
-        event_queue = self.reporter.event_queue
+        event_queue: Queue = self._sink.event_queue
         initial_status = self.reporter.status_snapshot
 
         class AuditProgressApp(App[None]):

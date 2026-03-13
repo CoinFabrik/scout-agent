@@ -27,8 +27,8 @@ DEFAULT_EXCLUDED_DIR_NAMES: Final[frozenset[str]] = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class DiscoveredRustFile:
-    absolute_path: Path
     relative_path: str
+    analysis_text: str
     content_sha256: str
 
 
@@ -100,8 +100,8 @@ def _walk_for_rust_files(
             )
             discovered.append(
                 DiscoveredRustFile(
-                    absolute_path=candidate,
                     relative_path=relative_path,
+                    analysis_text=analysis_source.analysis_text,
                     content_sha256=analysis_source.content_sha256,
                 )
             )
@@ -165,21 +165,9 @@ def _discover_configured_rust_files(
             relative_path=relative_path,
         )
         discovered[relative_path] = DiscoveredRustFile(
-            absolute_path=candidate,
             relative_path=relative_path,
+            analysis_text=analysis_source.analysis_text,
             content_sha256=analysis_source.content_sha256,
         )
 
     return list(discovered.values())
-
-
-def compute_scope_fingerprint(files: Sequence[DiscoveredRustFile]) -> str:
-    digest = sha256()
-
-    for source_file in sorted(files, key=lambda item: item.relative_path):
-        digest.update(source_file.relative_path.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(source_file.content_sha256.encode("utf-8"))
-        digest.update(b"\n")
-
-    return digest.hexdigest()

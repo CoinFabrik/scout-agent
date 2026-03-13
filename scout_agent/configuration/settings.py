@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from scout_agent.path_utils import validate_project_root
 from .llm_modes import DEFAULT_LLM_MODE, normalize_llm_mode
 
-DEFAULT_FACTS_FILENAME: Final[str] = "FACTS.yaml"
+DEFAULT_FACTS_DIRECTORY: Final[str] = ".scout-ai/facts"
 DEFAULT_REPORT_FILENAME: Final[str] = "REPORT.md"
 MODEL_ENV_VAR: Final[str] = "SCOUT_MODEL"
 DEFAULT_MAX_PARALLEL_FILES: Final[int] = 4
@@ -22,11 +22,14 @@ def resolve_project_root(raw_path: str) -> Path:
 
 
 def resolve_facts_path(project_root: Path, override: str | None) -> Path:
-    return _resolve_output_path(
-        project_root=project_root,
-        override=override,
-        default_filename=DEFAULT_FACTS_FILENAME,
-    )
+    if override is None or not override.strip():
+        return (project_root / DEFAULT_FACTS_DIRECTORY).resolve()
+
+    raw = Path(override).expanduser()
+    if raw.is_absolute():
+        return raw.resolve()
+
+    return (project_root / raw).resolve()
 
 
 def resolve_report_path(project_root: Path, override: str | None) -> Path:

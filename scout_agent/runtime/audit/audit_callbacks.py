@@ -25,7 +25,6 @@ class _ToolRunContext:
     max_lines: int | None
     offset: int | None
     limit: int | None
-    query: str | None
     current_file: str
     actor_run_id: str | None
     tool_call_id: str
@@ -41,11 +40,15 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         expert_names: set[str],
         current_file: str,
         dump_writer: AuditDumpWriter | None = None,
+        primary_actor_name: str = "supervisor",
+        dump_scope: str = "file",
     ) -> None:
         self._reporter = reporter
         self._expert_names = expert_names
         self._current_file = current_file
         self._dump_writer = dump_writer
+        self._primary_actor_name = primary_actor_name
+        self._dump_scope = dump_scope
         self._active_experts: set[str] = set()
         self._run_to_expert: dict[UUID, str] = {}
         self._tool_runs: dict[UUID, _ToolRunContext] = {}
@@ -76,9 +79,16 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         self._active_experts.add(expert_name)
         self._reporter.expert_spawned(expert_name=expert_name)
         if self._dump_writer is not None:
-            self._dump_writer.expert_started(
+            self._dump_writer.record_supervisor_event(
+                relative_path=self._current_file,
+                event_type="delegated_expert",
+                expert_name=expert_name,
+                expert_actor_run_id=str(run_id),
+            )
+            self._dump_writer.record_expert_event(
                 relative_path=self._current_file,
                 expert_name=expert_name,
+                event_type="started",
                 actor_run_id=str(run_id),
             )
 
@@ -97,18 +107,30 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             result = _extract_expert_result(outputs)
             if result is not None:
                 final_message_text = _extract_final_message_text(outputs)
-                self._dump_writer.expert_result(
+                payload: dict[str, object] = {
+                    "status": result.status,
+                    "final_message_text": final_message_text,
+                    "final_message_truncated": (
+                        False if final_message_text else None
+                    ),
+                }
+                if result.finding is not None:
+                    payload["finding_summary"] = {
+                        "pattern": result.finding.pattern,
+                        "severity": result.finding.severity,
+                        "location": result.finding.location,
+                    }
+                self._dump_writer.record_expert_event(
                     relative_path=self._current_file,
                     expert_name=expert_name,
-                    status=result.status,
-                    finding=result.finding,
+                    event_type="result",
                     actor_run_id=str(run_id),
-                    final_message_text=final_message_text,
-                    final_message_truncated=False if final_message_text else None,
+                    **payload,
                 )
-            self._dump_writer.expert_completed(
+            self._dump_writer.record_expert_event(
                 relative_path=self._current_file,
                 expert_name=expert_name,
+                event_type="completed",
                 actor_run_id=str(run_id),
             )
         self._finish_expert_run(run_id)
@@ -149,7 +171,9 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             if isinstance(serialized, dict)
             else "unknown_tool"
         )
-        if expert_name == "unknown_subagent" and not _is_expert_tool(tool_name):
+        if expert_name == "unknown_subagent" and (
+            not self._expert_names or not _is_expert_tool(tool_name)
+        ):
             expert_name = None
 
         safe_inputs = inputs if isinstance(inputs, dict) else {}
@@ -161,7 +185,6 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         max_lines = _coerce_optional_int(safe_inputs.get("max_lines"))
         offset = _coerce_optional_int(safe_inputs.get("offset"))
         limit = _coerce_optional_int(safe_inputs.get("limit"))
-        query = _resolve_tool_query(tool_name, safe_inputs)
         current_file = _ensure_leading_slash(self._current_file)
         actor_run_id = str(parent_run_id) if parent_run_id is not None else None
 
@@ -174,7 +197,6 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             max_lines=max_lines,
             offset=offset,
             limit=limit,
-            query=query,
             current_file=current_file,
             actor_run_id=actor_run_id,
             tool_call_id=str(run_id),
@@ -204,12 +226,15 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         self._reporter.tool_used(
             tool_name=context.tool_name,
             target=context.target,
-            expert_name=context.expert_name,
+            actor_name=(
+                context.expert_name
+                if context.expert_name is not None
+                else self._primary_actor_name
+            ),
             line_start=context.line_start,
             line_end=context.line_end,
             offset=context.offset,
             limit=context.limit,
-            query=context.query,
         )
         if self._dump_writer is not None:
             self._report_tool_used_to_dump(
@@ -257,7 +282,11 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             target=context.target,
             current_file=context.current_file,
             reason=reason,
-            expert_name=context.expert_name,
+            actor_name=(
+                context.expert_name
+                if context.expert_name is not None
+                else self._primary_actor_name
+            ),
         )
         if self._dump_writer is not None:
             self._report_tool_denied_to_dump(
@@ -273,8 +302,8 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         preview_truncated: bool | None,
     ) -> None:
         if context.expert_name is None:
-            self._dump_writer.supervisor_tool_used(
-                relative_path=self._current_file,
+            self._record_primary_actor_event(
+                event_type="tool_used",
                 tool_name=context.tool_name,
                 target=context.target,
                 line_start=context.line_start,
@@ -288,9 +317,11 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             )
             return
 
-        self._dump_writer.expert_tool_used(
+        self._dump_writer.record_expert_event(
             relative_path=self._current_file,
             expert_name=context.expert_name,
+            event_type="tool_used",
+            actor_run_id=context.actor_run_id,
             tool_name=context.tool_name,
             target=context.target,
             line_start=context.line_start,
@@ -300,7 +331,6 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             limit=context.limit,
             preview_text=preview_text,
             preview_truncated=preview_truncated,
-            actor_run_id=context.actor_run_id,
             tool_call_id=context.tool_call_id,
         )
 
@@ -311,8 +341,8 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         reason: str,
     ) -> None:
         if context.expert_name is None:
-            self._dump_writer.supervisor_tool_denied(
-                relative_path=self._current_file,
+            self._record_primary_actor_event(
+                event_type="tool_denied",
                 tool_name=context.tool_name,
                 target=context.target,
                 current_file=context.current_file,
@@ -321,30 +351,37 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             )
             return
 
-        self._dump_writer.expert_tool_denied(
+        self._dump_writer.record_expert_event(
             relative_path=self._current_file,
             expert_name=context.expert_name,
+            event_type="tool_denied",
+            actor_run_id=context.actor_run_id,
             tool_name=context.tool_name,
             target=context.target,
             current_file=context.current_file,
             reason=reason,
-            actor_run_id=context.actor_run_id,
             tool_call_id=context.tool_call_id,
         )
 
+    def _record_primary_actor_event(
+        self,
+        *,
+        event_type: str,
+        **payload: object,
+    ) -> None:
+        if self._dump_scope == "repo":
+            self._dump_writer.record_repo_event(
+                actor_name=self._primary_actor_name,
+                event_type=event_type,
+                **payload,
+            )
+            return
 
-def _resolve_tool_query(tool_name: str, inputs: dict[str, Any]) -> str | None:
-    if tool_name == "grep":
-        return f'"{inputs.get("pattern", "")}"'
-    if tool_name == "task":
-        subagent = inputs.get("subagent_type", "unknown")
-        description = inputs.get("description", "")
-        # Get first 50 chars, replace newlines with spaces for log clarity
-        brief = description.replace("\n", " ").strip()
-        if len(brief) > 50:
-            brief = brief[:47] + "..."
-        return f"{subagent} brief={brief}"
-    return None
+        self._dump_writer.record_supervisor_event(
+            relative_path=self._current_file,
+            event_type=event_type,
+            **payload,
+        )
 
 
 def _resolve_tool_target(inputs: dict[str, Any], *, fallback: str) -> str:

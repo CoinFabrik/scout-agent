@@ -18,6 +18,8 @@ from scout_agent.configuration.settings import (
     resolve_report_path,
 )
 
+DEFAULT_AUDIT_RECURSION_LIMIT = 3000
+
 
 @dataclass(frozen=True, slots=True)
 class ResolvedExtractConfig:
@@ -40,6 +42,8 @@ class ResolvedAuditConfig:
     extra_prompt: str | None
     ui_mode: AuditUiMode
     dump_runtime: bool
+    max_parallel_files: int
+    recursion_limit: int
 
 
 def resolve_extract_config(
@@ -97,6 +101,11 @@ def resolve_audit_config(
         extra_prompt=resolve_extra_prompt_text(project_root, args.extra_prompt),
         ui_mode=cast(AuditUiMode, getattr(args, "ui", "tui")),
         dump_runtime=bool(getattr(args, "dump_runtime", False)),
+        max_parallel_files=resolve_max_parallel_files(
+            getattr(args, "max_parallel_files", None),
+            fallback=_scout_max_parallel_files(scout_config),
+        ),
+        recursion_limit=_scout_recursion_limit(scout_config),
     )
 
 
@@ -133,3 +142,9 @@ def _scout_files(scout_config: ScoutConfig | None) -> list[str] | None:
 
 def _scout_max_parallel_files(scout_config: ScoutConfig | None) -> int | None:
     return scout_config.max_parallel_files if scout_config else None
+
+
+def _scout_recursion_limit(scout_config: ScoutConfig | None) -> int:
+    if scout_config is None or scout_config.recursion_limit is None:
+        return DEFAULT_AUDIT_RECURSION_LIMIT
+    return scout_config.recursion_limit

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import json
 from collections import defaultdict
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 
@@ -15,177 +14,13 @@ _READABLE_TOOL_NAMES = {
 }
 
 
-def render_dump_artifacts(
-    root_dir: Path,
-    *,
-    relative_path: str | None = None,
-) -> None:
-    resolved_root = root_dir.resolve()
-    run_path = resolved_root / "run.json"
-    if not run_path.exists():
-        raise FileNotFoundError(f"Dump directory does not contain run.json: {resolved_root}")
-
-    run_payload = _load_json(run_path)
-    summaries = _load_all_summaries(resolved_root)
-    _write_index_markdown(
-        root_dir=resolved_root,
-        run_payload=run_payload,
-        summaries=summaries,
-    )
-
-    if relative_path is None:
-        target_paths = sorted(summaries)
-    else:
-        target_paths = [_normalize_relative_path(relative_path)]
-
-    for target_path in target_paths:
-        _write_file_markdown_bundle(
-            root_dir=resolved_root,
-            relative_path=target_path,
-            summary_payload=summaries.get(target_path, {}),
-        )
-
-
-def _write_index_markdown(
-    *,
-    root_dir: Path,
-    run_payload: dict[str, Any],
-    summaries: dict[str, dict[str, Any]],
-) -> None:
-    lines = [
-        "# Audit Dump",
-        "",
-        f"- Run ID: `{run_payload.get('run_id', 'unknown')}`",
-        f"- Status: `{run_payload.get('status', 'unknown')}`",
-        f"- Model: `{run_payload.get('model_name', 'unknown')}`",
-        f"- LLM mode: `{run_payload.get('llm_mode', 'unknown')}`",
-        f"- Started: `{run_payload.get('started_at', 'unknown')}`",
-        f"- Finished: `{run_payload.get('finished_at', 'running')}`",
-        (
-            "- Progress: "
-            f"{run_payload.get('files_completed', 0)}/{run_payload.get('files_total', 0)} file(s)"
-        ),
-        "",
-    ]
-
-    if not summaries:
-        lines.append("No file dump data captured yet.")
-        _write_markdown(root_dir / "index.md", lines)
-        return
-
-    lines.extend(
-        [
-            "| File | Status | Findings | Spawned Experts |",
-            "| --- | --- | ---: | --- |",
-        ]
-    )
-    for relative_path in sorted(summaries):
-        summary = summaries[relative_path]
-        experts = ", ".join(summary.get("spawned_experts", [])) or "-"
-        file_link = _markdown_relative_file_link(relative_path)
-        lines.append(
-            "| "
-            f"[`{relative_path}`]({file_link}) | "
-            f"{summary.get('status', 'unknown')} | "
-            f"{summary.get('findings_count', 0)} | "
-            f"{experts} |"
-        )
-
-    _write_markdown(root_dir / "index.md", lines)
-
-
-def _write_file_markdown_bundle(
-    *,
-    root_dir: Path,
-    relative_path: str,
-    summary_payload: dict[str, Any],
-) -> None:
-    file_dir = root_dir / "files" / PurePosixPath(relative_path)
-    supervisor_events = _load_jsonl(file_dir / "supervisor.jsonl")
-    expert_paths = sorted((file_dir / "experts").glob("*.jsonl")) if (file_dir / "experts").exists() else []
-    expert_events_by_name = {
-        expert_path.stem: _load_jsonl(expert_path)
-        for expert_path in expert_paths
-    }
-
-    legacy_dump = _is_legacy_dump(supervisor_events, expert_events_by_name)
-    ordered_experts = sorted(
-        expert_events_by_name,
-        key=lambda name: _first_seq(expert_events_by_name[name]),
-    )
-    _remove_stale_readable_markdown(file_dir)
-    _write_file_markdown(
-        file_dir=file_dir,
-        relative_path=relative_path,
-        summary_payload=summary_payload,
-        expert_names=ordered_experts,
-    )
-    _write_actor_timeline_markdown(
-        path=file_dir / "supervisor.timeline.md",
-        title=f"Supervisor Timeline: `{relative_path}`",
-        relative_path=relative_path,
-        actor_name="supervisor",
-        events=supervisor_events,
-        legacy_dump=legacy_dump,
-        missing_message_label="Final AI message: not captured in this run.",
-    )
-    for expert_name in ordered_experts:
-        _write_actor_timeline_markdown(
-            path=file_dir / "experts" / f"{expert_name}.timeline.md",
-            title=f"Expert Timeline: `{expert_name}`",
-            relative_path=relative_path,
-            actor_name=expert_name,
-            events=expert_events_by_name[expert_name],
-            legacy_dump=legacy_dump,
-            missing_message_label="Final AI message: not captured in this run.",
-        )
-
-
-def _write_file_markdown(
-    *,
-    file_dir: Path,
-    relative_path: str,
-    summary_payload: dict[str, Any],
-    expert_names: list[str],
-) -> None:
-    lines = [
-        f"# File Dump: `{relative_path}`",
-        "",
-        "## Summary",
-        "",
-        f"- Status: `{summary_payload.get('status', 'unknown')}`",
-        f"- Started: `{summary_payload.get('started_at', 'unknown')}`",
-        f"- Finished: `{summary_payload.get('finished_at', 'running')}`",
-        f"- Findings accepted: `{summary_payload.get('findings_count', 0)}`",
-        f"- Supervisor tool calls: `{summary_payload.get('supervisor_tool_calls', 0)}`",
-        f"- Expert tool calls: `{summary_payload.get('expert_tool_calls', 0)}`",
-        f"- Spawned experts: `{', '.join(summary_payload.get('spawned_experts', [])) or '-'}`",
-        f"- Used text fallback: `{summary_payload.get('used_text_fallback', False)}`",
-        "",
-        "## Readable Artifacts",
-        "",
-        "- [Supervisor timeline](./supervisor.timeline.md)",
-    ]
-
-    if expert_names:
-        for expert_name in expert_names:
-            lines.append(
-                f"- [Expert timeline: `{expert_name}`](./experts/{expert_name}.timeline.md)"
-            )
-    else:
-        lines.append("- No expert timelines captured yet.")
-
-    _write_markdown(file_dir / "file.md", lines)
-
-
-def _write_actor_timeline_markdown(
+def write_actor_timeline_markdown(
     *,
     path: Path,
     title: str,
     relative_path: str,
     actor_name: str,
     events: list[dict[str, Any]],
-    legacy_dump: bool,
     missing_message_label: str,
 ) -> None:
     lines = [
@@ -195,15 +30,6 @@ def _write_actor_timeline_markdown(
         f"- Actor: `{actor_name}`",
         "",
     ]
-
-    if legacy_dump:
-        lines.extend(
-            [
-                "> Legacy dump: actor correlation IDs, line ranges, previews, or final AI text may be missing.",
-                "",
-            ]
-        )
-
     lines.extend(
         _render_actor_section(
             title="Timeline",
@@ -211,7 +37,6 @@ def _write_actor_timeline_markdown(
             missing_message_label=missing_message_label,
         )
     )
-
     _write_markdown(path, lines)
 
 
@@ -231,7 +56,7 @@ def _render_actor_section(
     for index, group in enumerate(groups, start=1):
         if multiple_groups:
             actor_run_id = group[0].get("actor_run_id")
-            label = actor_run_id or "legacy"
+            label = actor_run_id or "unknown"
             lines.extend([f"### Pass {index}", "", f"- Actor run id: `{label}`", ""])
 
         for event in group:
@@ -410,65 +235,7 @@ def _group_events_by_actor_run(
     for event in ordered_events:
         grouped[str(event["actor_run_id"])].append(event)
 
-    return sorted(
-        grouped.values(),
-        key=lambda group: _first_seq(group),
-    )
-
-
-def _is_legacy_dump(
-    supervisor_events: list[dict[str, Any]],
-    expert_events_by_name: dict[str, list[dict[str, Any]]],
-) -> bool:
-    all_events = list(supervisor_events)
-    for events in expert_events_by_name.values():
-        all_events.extend(events)
-    if not all_events:
-        return False
-    return any("actor_run_id" not in event for event in all_events)
-
-
-def _remove_stale_readable_markdown(file_dir: Path) -> None:
-    legacy_timeline = file_dir / "timeline.md"
-    if legacy_timeline.exists():
-        legacy_timeline.unlink()
-
-    experts_dir = file_dir / "experts"
-    if not experts_dir.exists():
-        return
-
-    for expert_timeline in experts_dir.glob("*.timeline.md"):
-        expert_timeline.unlink()
-
-
-def _markdown_relative_file_link(relative_path: str) -> str:
-    return f"./files/{PurePosixPath(relative_path).as_posix()}/file.md"
-
-
-def _load_all_summaries(root_dir: Path) -> dict[str, dict[str, Any]]:
-    summaries: dict[str, dict[str, Any]] = {}
-    for summary_path in sorted((root_dir / "files").glob("**/summary.json")):
-        payload = _load_json(summary_path)
-        relative_path = payload.get("relative_path")
-        if isinstance(relative_path, str) and relative_path.strip():
-            summaries[_normalize_relative_path(relative_path)] = payload
-    return summaries
-
-
-def _load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-    events: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        events.append(json.loads(stripped))
-    return events
+    return sorted(grouped.values(), key=lambda group: _first_seq(group))
 
 
 def _write_markdown(path: Path, lines: list[str]) -> None:
@@ -489,13 +256,3 @@ def _first_seq(events: list[dict[str, Any]]) -> int:
         return 0
     seq = events[0].get("seq")
     return seq if isinstance(seq, int) else 0
-
-
-def _normalize_relative_path(relative_path: str) -> str:
-    raw = relative_path.strip()
-    if not raw:
-        raise ValueError("relative_path must be non-empty")
-    normalized = PurePosixPath(raw).as_posix()
-    if normalized.startswith("/"):
-        return normalized.removeprefix("/")
-    return normalized

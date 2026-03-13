@@ -1,40 +1,22 @@
 from __future__ import annotations
-from pydantic import BaseModel
 
 from collections.abc import Sequence
+from functools import cache
+from pathlib import Path
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
-from pydantic import ConfigDict, Field, ValidationError, field_validator
+from pydantic import ValidationError
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt
 from tenacity.wait import wait_exponential_jitter
 
 from scout_agent.domain.facts import FunctionSummary
 from scout_agent.llm.providers import build_chat_model
-from scout_agent.runtime.extract.models import RetryableExtractionError
+from scout_agent.runtime.extract.models import (
+    FileFactsExtractionResponse,
+    RetryableExtractionError,
+)
 from scout_agent.runtime.source.rust_parser import ParsedRustFile, ParsedRustFunction
-
-FACTS_EXTRACTION_SYSTEM_PROMPT = """You extract concise semantic summaries for Rust smart-contract functions.
-
-You are given:
-- one sanitized Rust source file
-- the exact canonical function keys that must be summarized
-
-Your job:
-- return a one line summary for each listed function key
-- summarize only these four fields:
-  1. authorization
-  2. vector_params
-  3. time_dependent
-  4. sentinel_values
-
-Rules:
-- Each summary must be a single line.
-- Use only the provided file source and function inventory.
-- Do not omit any function key.
-- Do not invent functions or keys.
-- Keep summaries specific to the function and file.
-"""
 
 EXTRACTION_RETRY_NOTE = (
     "Previous response used invalid function_key values or malformed structure. "
@@ -44,46 +26,13 @@ EXTRACTION_RETRY_NOTE = (
 )
 
 
-class ExtractedFunctionSummary(BaseModel):
-    function_key: str = Field(min_length=1)
-    summary: FunctionSummary
-
-
-class FileFactsExtractionResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    functions: list[ExtractedFunctionSummary] = Field(default_factory=list)
-
-    @field_validator("functions")
-    @classmethod
-    def _function_keys_unique(
-        cls,
-        value: list[ExtractedFunctionSummary],
-    ) -> list[ExtractedFunctionSummary]:
-        seen: set[str] = set()
-        duplicates: list[str] = []
-
-        for item in value:
-            if item.function_key in seen:
-                duplicates.append(item.function_key)
-            seen.add(item.function_key)
-
-        if duplicates:
-            duplicate_list = ", ".join(sorted(set(duplicates)))
-            raise ValueError(
-                f"Duplicate function_key values in extraction response: {duplicate_list}"
-            )
-
-        return value
-
-
 def extract_file_facts_with_llm(
     parsed_file: ParsedRustFile,
     *,
     model_name: str,
     llm_mode: str,
 ) -> dict[str, FunctionSummary]:
-    function_inventory = build_function_inventory(parsed_file)
+    function_inventory = _build_function_inventory(parsed_file)
     if not function_inventory:
         return {}
 
@@ -114,7 +63,7 @@ def extract_file_facts_with_llm(
     raise AssertionError("Retry loop exited without returning or raising.")
 
 
-def build_canonical_function_key(
+def _build_canonical_function_key(
     *,
     relative_path: str,
     function: ParsedRustFunction,
@@ -124,14 +73,14 @@ def build_canonical_function_key(
     return f"{relative_path}::{function.name}"
 
 
-def build_function_inventory(
+def _build_function_inventory(
     parsed_file: ParsedRustFile,
 ) -> list[tuple[str, ParsedRustFunction]]:
     inventory: list[tuple[str, ParsedRustFunction]] = []
     seen_keys: set[str] = set()
 
     for function in parsed_file.functions:
-        function_key = build_canonical_function_key(
+        function_key = _build_canonical_function_key(
             relative_path=parsed_file.relative_path,
             function=function,
         )
@@ -146,7 +95,7 @@ def build_function_inventory(
     return inventory
 
 
-def build_file_facts_extraction_messages(
+def _build_file_facts_extraction_messages(
     parsed_file: ParsedRustFile,
     function_inventory: Sequence[tuple[str, ParsedRustFunction]],
     *,
@@ -167,18 +116,19 @@ def build_file_facts_extraction_messages(
     )
 
     return [
-        SystemMessage(content=FACTS_EXTRACTION_SYSTEM_PROMPT),
+        SystemMessage(content=_load_extract_facts_system_prompt()),
         HumanMessage(content=user_prompt),
     ]
 
 
-def merge_extracted_file_facts(
-    parsed_file: ParsedRustFile,
+def _merge_extracted_file_facts(
     *,
+    relative_path: str,
+    function_inventory: Sequence[tuple[str, ParsedRustFunction]],
     extracted: FileFactsExtractionResponse,
 ) -> dict[str, FunctionSummary]:
-    expected_inventory = build_function_inventory(parsed_file)
-    expected_keys = [function_key for function_key, _ in expected_inventory]
+    expected_keys = [function_key for function_key, _ in function_inventory]
+    expected_key_set = set(expected_keys)
     extracted_by_key = {item.function_key: item.summary for item in extracted.functions}
 
     missing_keys = [
@@ -189,7 +139,7 @@ def merge_extracted_file_facts(
     unexpected_keys = [
         function_key
         for function_key in extracted_by_key
-        if function_key not in set(expected_keys)
+        if function_key not in expected_key_set
     ]
 
     if missing_keys or unexpected_keys:
@@ -201,7 +151,7 @@ def merge_extracted_file_facts(
         joined = "; ".join(problems)
         raise RetryableExtractionError(
             "Extraction response does not match parsed function inventory for "
-            f"{parsed_file.relative_path}: {joined}"
+            f"{relative_path}: {joined}"
         )
 
     return {
@@ -242,6 +192,17 @@ def _format_numbered_source(source_text: str) -> str:
     return "\n".join(numbered_lines)
 
 
+@cache
+def _load_extract_facts_system_prompt() -> str:
+    prompt_path = (
+        Path(__file__).resolve().parent.parent / "prompts" / "extract_facts_system.md"
+    )
+    prompt_text = prompt_path.read_text(encoding="utf-8").strip()
+    if not prompt_text:
+        raise ValueError(f"Extract facts system prompt is empty: {prompt_path}")
+    return prompt_text
+
+
 def _extract_file_facts_once(
     parsed_file: ParsedRustFile,
     *,
@@ -251,7 +212,7 @@ def _extract_file_facts_once(
 ) -> dict[str, FunctionSummary]:
     try:
         response = structured_model.invoke(
-            build_file_facts_extraction_messages(
+            _build_file_facts_extraction_messages(
                 parsed_file,
                 function_inventory,
                 retry_note=retry_note,
@@ -264,15 +225,15 @@ def _extract_file_facts_once(
         ) from exc
 
     try:
-        if not isinstance(response, FileFactsExtractionResponse):
-            response = FileFactsExtractionResponse.model_validate(response)
+        response = FileFactsExtractionResponse.model_validate(response)
     except ValidationError as exc:
         raise RetryableExtractionError(
             "Extraction response failed schema validation for "
             f"{parsed_file.relative_path}: {exc}"
         ) from exc
 
-    return merge_extracted_file_facts(
-        parsed_file,
+    return _merge_extracted_file_facts(
+        relative_path=parsed_file.relative_path,
+        function_inventory=function_inventory,
         extracted=response,
     )

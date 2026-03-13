@@ -3,72 +3,42 @@ from __future__ import annotations
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
-from scout_agent.domain.facts import FunctionSummary
+from scout_agent.domain.facts import FactsDocument
+from scout_agent.runtime.time_utils import utc_now_iso
+from scout_agent.runtime.extract.facts_extractor import extract_file_facts_with_llm
 from scout_agent.runtime.extract.models import (
     ExtractFactsParallelError,
     ExtractProgressReporter,
     FileExtractionFailure,
 )
-from scout_agent.runtime.source.discovery import DiscoveredRustFile
-from scout_agent.runtime.source.rust_parser import ParsedRustFile, parse_rust_source
-from scout_agent.runtime.source.source_filter import build_analysis_source
-
-
-class FileFactsExtractor(Protocol):
-    def __call__(
-        self,
-        parsed_file: ParsedRustFile,
-        *,
-        model_name: str,
-        llm_mode: str,
-    ) -> dict[str, FunctionSummary]: ...
+from scout_agent.runtime.source.rust_parser import parse_rust_source
 
 
 @dataclass(frozen=True, slots=True)
 class ExtractTask:
     index: int
-    absolute_path: Path
     relative_path: str
+    analysis_text: str
     content_sha256: str
-
-
-@dataclass(frozen=True, slots=True)
-class ExtractTaskSuccess:
-    relative_path: str
-    function_summaries: dict[str, FunctionSummary]
-    function_count: int
-
-
-def build_tasks(discovered_files: list[DiscoveredRustFile]) -> list[ExtractTask]:
-    return [
-        ExtractTask(
-            index=index,
-            absolute_path=discovered_file.absolute_path,
-            relative_path=discovered_file.relative_path,
-            content_sha256=discovered_file.content_sha256,
-        )
-        for index, discovered_file in enumerate(discovered_files, start=1)
-    ]
 
 
 def execute_extract_tasks(
     *,
     tasks: list[ExtractTask],
+    project_root: Path,
     reporter: ExtractProgressReporter,
     model_name: str,
     llm_mode: str,
     max_parallel_files: int,
-    extract_file_facts: FileFactsExtractor,
-) -> tuple[list[dict[str, FunctionSummary]], int]:
+) -> tuple[list[FactsDocument], int]:
     total = len(tasks)
     failures: list[FileExtractionFailure] = []
-    results: dict[int, ExtractTaskSuccess] = {}
+    results: dict[int, FactsDocument] = {}
     function_count = 0
 
     with ThreadPoolExecutor(max_workers=max_parallel_files) as executor:
-        future_to_task: dict[Future[ExtractTaskSuccess], ExtractTask] = {}
+        future_to_task: dict[Future[FactsDocument], ExtractTask] = {}
 
         for task in tasks:
             reporter.file_started(
@@ -79,23 +49,23 @@ def execute_extract_tasks(
             future = executor.submit(
                 _run_extract_task,
                 task,
+                project_root=project_root,
                 model_name=model_name,
                 llm_mode=llm_mode,
-                extract_file_facts=extract_file_facts,
             )
             future_to_task[future] = task
 
         for future in as_completed(future_to_task):
             task = future_to_task[future]
             try:
-                success = future.result()
-                results[task.index] = success
-                function_count += success.function_count
+                document = future.result()
+                function_count += len(document.functions)
+                results[task.index] = document
                 reporter.file_completed(
                     index=task.index,
                     total=total,
-                    relative_path=success.relative_path,
-                    function_count=success.function_count,
+                    relative_path=document.path,
+                    function_count=len(document.functions),
                 )
             except Exception as exc:
                 reporter.file_failed(
@@ -118,34 +88,31 @@ def execute_extract_tasks(
     if failures:
         raise ExtractFactsParallelError(failures)
 
-    return (
-        [results[i].function_summaries for i in sorted(results)],
-        function_count,
-    )
+    return ([results[i] for i in sorted(results)], function_count)
 
 
 def _run_extract_task(
     task: ExtractTask,
     *,
+    project_root: Path,
     model_name: str,
     llm_mode: str,
-    extract_file_facts: FileFactsExtractor,
-) -> ExtractTaskSuccess:
-    analysis_source = build_analysis_source(
-        path=task.absolute_path,
-        relative_path=task.relative_path,
-    )
+) -> FactsDocument:
     parsed_file = parse_rust_source(
-        analysis_source.analysis_text.encode("utf-8"),
+        task.analysis_text.encode("utf-8"),
         relative_path=task.relative_path,
     )
-    extracted_file = extract_file_facts(
+    extracted_file = extract_file_facts_with_llm(
         parsed_file,
         model_name=model_name,
         llm_mode=llm_mode,
     )
-    return ExtractTaskSuccess(
-        relative_path=task.relative_path,
-        function_summaries=extracted_file,
-        function_count=len(extracted_file),
+    return FactsDocument(
+        generated_at_utc=utc_now_iso(),
+        project_root=str(project_root),
+        model=model_name,
+        llm_mode=llm_mode,
+        path=task.relative_path,
+        content_sha256=task.content_sha256,
+        functions=extracted_file,
     )

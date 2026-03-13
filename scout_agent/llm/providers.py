@@ -7,6 +7,9 @@ from collections.abc import Mapping
 from scout_agent.configuration.llm_config import get_model_kwargs
 
 
+DEFAULT_SDK_MAX_RETRIES = 2
+
+
 @dataclass(frozen=True, slots=True)
 class Provider:
     name: str
@@ -85,6 +88,7 @@ def build_chat_model(model_name: str, llm_mode: str):
     match = infer_provider(model_name)
     api_key = get_api_key(match.provider)
     kwargs = get_model_kwargs(match.provider.name, match.model_name, llm_mode)
+    kwargs.setdefault("max_retries", DEFAULT_SDK_MAX_RETRIES)
     kwargs.setdefault("streaming", False)
 
     if match.provider.name == "openai":

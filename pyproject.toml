@@ -33,6 +33,15 @@ scout-agent = "scout_agent.app.main:main"
 [tool.setuptools.packages.find]
 include = ["scout_agent*"]
 
+[tool.setuptools.package-data]
+scout_agent = [
+    "runtime/prompts/*.md",
+    "runtime/prompts/*/*.md",
+    "runtime/prompts/*/*/*.md",
+    "runtime/prompts/*/*/*/*.md",
+    "runtime/prompts/*/*/*/*/*.md",
+]
+
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]

@@ -19,7 +19,7 @@ OPENAI_DETERMINISTIC_MODEL_PREFIXES: Final[tuple[str, ...]] = ("gpt-4.1",)
 
 def openai_reasoning_conf(
     *,
-    reasoning_effort: str = "medium",
+    reasoning_effort: str = "high",
     **overrides: Any,
 ) -> dict[str, Any]:
     return {

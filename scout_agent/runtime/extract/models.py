@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from scout_agent.domain.facts import FunctionSummary
+
 
 class ExtractProgressReporter(Protocol):
     def started(
@@ -59,10 +63,13 @@ class ExtractContext:
 @dataclass(frozen=True, slots=True)
 class ExtractFactsPipelineResult:
     project_root: Path
-    facts_path: Path
+    facts_root: Path
     file_count: int
     function_count: int
-    scope_fingerprint: str
+
+    @property
+    def facts_path(self) -> Path:
+        return self.facts_root
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +81,39 @@ class FileExtractionFailure:
 
 class RetryableExtractionError(ValueError):
     """Raised for malformed extraction outputs that are safe to retry."""
+
+
+class ExtractedFunctionSummary(BaseModel):
+    function_key: str = Field(min_length=1)
+    summary: FunctionSummary
+
+
+class FileFactsExtractionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    functions: list[ExtractedFunctionSummary] = Field(default_factory=list)
+
+    @field_validator("functions")
+    @classmethod
+    def _function_keys_unique(
+        cls,
+        value: list[ExtractedFunctionSummary],
+    ) -> list[ExtractedFunctionSummary]:
+        seen: set[str] = set()
+        duplicates: list[str] = []
+
+        for item in value:
+            if item.function_key in seen:
+                duplicates.append(item.function_key)
+            seen.add(item.function_key)
+
+        if duplicates:
+            duplicate_list = ", ".join(sorted(set(duplicates)))
+            raise ValueError(
+                f"Duplicate function_key values in extraction response: {duplicate_list}"
+            )
+
+        return value
 
 
 class ExtractFactsParallelError(ValueError):
