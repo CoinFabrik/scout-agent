@@ -64,6 +64,3 @@ class ExtractProgressReporter:
             file=self._stdout,
             flush=True,
         )
-
-    def close(self) -> None:
-        return None

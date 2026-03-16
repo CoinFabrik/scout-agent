@@ -1,12 +1,9 @@
-from __future__ import annotations
-
 import os
-from collections.abc import Collection, Sequence
+from collections.abc import Collection
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Final
-
 from scout_agent.path_utils import validate_project_root
 from scout_agent.runtime.source.source_filter import (
     build_analysis_source,
@@ -37,7 +34,8 @@ def discover_rust_files(
     excluded_dir_names: Collection[str] | None = None,
     configured_paths: Collection[str] | None = None,
 ) -> list[DiscoveredRustFile]:
-    validate_project_root(project_root)
+    root = project_root.resolve()
+    validate_project_root(root)
 
     excluded = set(DEFAULT_EXCLUDED_DIR_NAMES)
     if excluded_dir_names is not None:
@@ -45,18 +43,17 @@ def discover_rust_files(
 
     if configured_paths:
         discovered = _discover_configured_rust_files(
-            root=project_root,
+            root=root,
             configured_paths=configured_paths,
             excluded_dir_names=excluded,
         )
-        discovered.sort(key=lambda item: item.relative_path)
-        return discovered
+    else:
+        discovered = _walk_for_rust_files(
+            root=root,
+            scan_dir=root,
+            excluded_dir_names=excluded,
+        )
 
-    discovered = _walk_for_rust_files(
-        root=project_root,
-        scan_dir=project_root,
-        excluded_dir_names=excluded,
-    )
     discovered.sort(key=lambda item: item.relative_path)
     return discovered
 

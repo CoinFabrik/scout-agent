@@ -8,8 +8,13 @@ DEFAULT_SEED: Final[int] = 42
 
 # Keep model-family matching coarse and conservative. OpenAI parameter support
 # changes across model families, so unknown families should receive no defaults.
+#
+# This project currently routes OpenAI calls through ChatOpenAI, which uses the
+# Chat Completions surface. GPT-5.4 tool flows with reasoning must use the
+# Responses API, so only the GPT-5.1 line gets the automatic reasoning default
+# on this transport.
 OPENAI_REASONING_MODEL_PREFIXES: Final[tuple[str, ...]] = (
-    "gpt-5",
+    "gpt-5.1",
     "o1",
     "o3",
     "o4",
@@ -19,7 +24,7 @@ OPENAI_DETERMINISTIC_MODEL_PREFIXES: Final[tuple[str, ...]] = ("gpt-4.1",)
 
 def openai_reasoning_conf(
     *,
-    reasoning_effort: str = "high",
+    reasoning_effort: str = "xhigh",
     **overrides: Any,
 ) -> dict[str, Any]:
     return {

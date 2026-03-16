@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 import os
-from dataclasses import dataclass
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from scout_agent.configuration.llm_config import get_model_kwargs
 
@@ -51,11 +49,13 @@ def infer_provider(model_name: str) -> ProviderMatch:
     if provider_key not in PROVIDERS:
         raise ProviderError(
             f"Unknown provider prefix {maybe_provider!r}. "
-            f"Supported providers: {', '.join(sorted(PROVIDERS.keys()))}."
+            f"Supported providers: {', '.join(sorted(PROVIDERS))}."
         )
 
     if not normalized_model:
-        raise ProviderError("Model must include a non-empty provider and model value.")
+        raise ProviderError(
+            "Model must include a non-empty model after the provider prefix."
+        )
 
     return ProviderMatch(
         provider=PROVIDERS[provider_key],
@@ -86,7 +86,6 @@ def get_api_key(
 
 def build_chat_model(model_name: str, llm_mode: str):
     match = infer_provider(model_name)
-    api_key = get_api_key(match.provider)
     kwargs = get_model_kwargs(match.provider.name, match.model_name, llm_mode)
     kwargs.setdefault("max_retries", DEFAULT_SDK_MAX_RETRIES)
     kwargs.setdefault("streaming", False)
@@ -96,10 +95,10 @@ def build_chat_model(model_name: str, llm_mode: str):
             from langchain_openai import ChatOpenAI
         except ImportError as exc:
             raise ProviderError("Missing langchain-openai dependency.") from exc
-
         return ChatOpenAI(
             model=match.model_name,
-            api_key=api_key,
+            use_responses_api=True,
+            api_key=get_api_key(match.provider),
             **kwargs,
         )
 
@@ -111,7 +110,7 @@ def build_chat_model(model_name: str, llm_mode: str):
 
         return ChatAnthropic(
             model=match.model_name,
-            api_key=api_key,
+            api_key=get_api_key(match.provider),
             **kwargs,
         )
 
@@ -123,7 +122,7 @@ def build_chat_model(model_name: str, llm_mode: str):
 
         return ChatGoogleGenerativeAI(
             model=match.model_name,
-            google_api_key=api_key,
+            google_api_key=get_api_key(match.provider),
             **kwargs,
         )
 

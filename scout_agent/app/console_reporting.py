@@ -16,7 +16,7 @@ from scout_agent.runtime.audit.reporting import (
     AuditProgressReporter,
     PlainAuditProgressSink,
 )
-from scout_agent.runtime.extract.models import ExtractFactsPipelineResult
+from scout_agent.runtime.extract.pipeline import ExtractFactsPipelineResult
 
 
 class ConsoleOutput:
@@ -28,6 +28,10 @@ class ConsoleOutput:
     ) -> None:
         self._stdout = stdout or sys.stdout
         self._stderr = stderr or sys.stderr
+
+    @property
+    def stdout(self) -> TextIO:
+        return self._stdout
 
     def make_audit_progress_session(
         self,
@@ -42,12 +46,11 @@ class ConsoleOutput:
 
     def print_extract_summary(
         self,
-        *,
         result: ExtractFactsPipelineResult,
     ) -> None:
-        print(f"FACTS written to: {result.facts_root}", file=self._stdout)
+        print(f"FACTS written to: {result.facts_path}", file=self._stdout)
         print(
-            f"Aggregate FACTS: {aggregate_facts_file_path(result.facts_root)}",
+            f"Aggregate FACTS: {aggregate_facts_file_path(result.facts_path)}",
             file=self._stdout,
         )
         print(f"Files analyzed: {result.file_count}", file=self._stdout)
