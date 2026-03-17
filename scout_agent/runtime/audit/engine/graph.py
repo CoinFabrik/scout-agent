@@ -319,6 +319,9 @@ def _merge_findings(
     finding_keys: set[str],
 ) -> None:
     for finding in response.findings:
+        finding.location = _relativize_location(
+            finding.location, runtime.project_root
+        )
         finding_key = _make_finding_key(finding)
         if finding_key in finding_keys:
             continue
@@ -328,6 +331,25 @@ def _merge_findings(
             total_verified_findings=len(state["verified_findings"]),
             finding=finding,
         )
+
+
+def _relativize_location(location: str, project_root: Path) -> str:
+    if ":" not in location:
+        return location
+
+    parts = location.rsplit(":", 1)
+    path_part = parts[0]
+    line_part = parts[1]
+
+    try:
+        path = Path(path_part).expanduser()
+        if path.is_absolute() and path.is_relative_to(project_root):
+            rel_path = path.relative_to(project_root).as_posix()
+            return f"{rel_path}:{line_part}"
+    except (ValueError, RuntimeError):
+        pass
+
+    return location
 
 
 def _run_file_audit(
