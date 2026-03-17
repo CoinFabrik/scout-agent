@@ -1,10 +1,9 @@
 from argparse import Namespace
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
-from scout_agent.app.audit_ui import AuditUiMode
 from scout_agent.configuration.scout_config import load_default_scout_config
 from scout_agent.configuration.settings import (
+    resolve_agent_read_limit,
     resolve_extra_prompt_text,
     resolve_facts_path,
     resolve_llm_mode,
@@ -31,9 +30,8 @@ class ExtractSettings:
 class AuditSettings(ExtractSettings):
     report_path: Path
     extra_prompt: str | None
-    ui_mode: AuditUiMode
-    dump_runtime: bool
     recursion_limit: int
+    agent_read_limit: int
 
 
 def resolve_extract_settings(args: Namespace) -> ExtractSettings:
@@ -43,14 +41,17 @@ def resolve_extract_settings(args: Namespace) -> ExtractSettings:
 def resolve_audit_config(args: Namespace) -> AuditSettings:
     common = _resolve_common(args)
     project_root = common["project_root"]
+    scout_config = load_default_scout_config(project_root)
 
     return AuditSettings(
         **common,
         report_path=resolve_report_path(project_root, args.report_path),
         extra_prompt=resolve_extra_prompt_text(project_root, args.extra_prompt),
-        ui_mode=cast(AuditUiMode, getattr(args, "ui", "tui")),
-        dump_runtime=bool(getattr(args, "dump_runtime", False)),
         recursion_limit=DEFAULT_AUDIT_RECURSION_LIMIT,
+        agent_read_limit=resolve_agent_read_limit(
+            getattr(args, "agent_read_limit", None),
+            fallback=scout_config.agent_read_limit if scout_config else None,
+        ),
     )
 
 

@@ -17,6 +17,7 @@ class ScoutConfig:
     files: list[str] | None = None
     max_parallel_files: int | None = None
     recursion_limit: int | None = None
+    agent_read_limit: int | None = None
 
 
 def resolve_default_scout_config_path(project_root: Path) -> Path | None:
@@ -56,6 +57,10 @@ def load_scout_config(path: Path) -> ScoutConfig:
         payload.get("recursion_limit"),
         field_name="recursion_limit",
     )
+    agent_read_limit = _optional_positive_int(
+        payload.get("agent_read_limit"),
+        field_name="agent_read_limit",
+    )
 
     return ScoutConfig(
         model=model,
@@ -63,6 +68,7 @@ def load_scout_config(path: Path) -> ScoutConfig:
         files=files,
         max_parallel_files=max_parallel_files,
         recursion_limit=recursion_limit,
+        agent_read_limit=agent_read_limit,
     )
 
 
@@ -101,6 +107,6 @@ def _optional_positive_int(value: Any, *, field_name: str) -> int | None:
         return None
     if not isinstance(value, int):
         raise ValueError(f"'{field_name}' must be an integer when provided")
-    if value < 1:
-        raise ValueError(f"'{field_name}' must be >= 1 when provided")
+    if value < 0:
+        raise ValueError(f"'{field_name}' must be >= 0 when provided")
     return value

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TextIO
+
+from scout_agent.runtime.progress import LineProgressSink
 
 
 class ExtractProgressReporter:
-    def __init__(self, stdout: TextIO) -> None:
-        self._stdout = stdout
+    def __init__(self, sink: LineProgressSink) -> None:
+        self._sink = sink
 
     def started(
         self,
@@ -16,11 +17,9 @@ class ExtractProgressReporter:
         model_name: str,
         llm_mode: str,
     ) -> None:
-        print(
+        self._sink.emit(
             "Starting extract-facts for "
-            f"{project_root} with {total_files} file(s) using {model_name} [{llm_mode}]",
-            file=self._stdout,
-            flush=True,
+            f"{project_root} with {total_files} file(s) using {model_name} [{llm_mode}]"
         )
 
     def file_started(
@@ -30,11 +29,7 @@ class ExtractProgressReporter:
         total: int,
         relative_path: str,
     ) -> None:
-        print(
-            f"Extracting {index}/{total}: {relative_path}",
-            file=self._stdout,
-            flush=True,
-        )
+        self._sink.emit(f"Extracting {index}/{total}: {relative_path}")
 
     def file_completed(
         self,
@@ -44,10 +39,8 @@ class ExtractProgressReporter:
         relative_path: str,
         function_count: int,
     ) -> None:
-        print(
+        self._sink.emit(
             f"Completed {index}/{total}: {relative_path} ({function_count} function(s))",
-            file=self._stdout,
-            flush=True,
         )
 
     def file_failed(
@@ -59,8 +52,6 @@ class ExtractProgressReporter:
         error_type: str,
         message: str,
     ) -> None:
-        print(
-            f"Failed {index}/{total}: {relative_path} ({error_type}: {message})",
-            file=self._stdout,
-            flush=True,
+        self._sink.emit(
+            f"Failed {index}/{total}: {relative_path} ({error_type}: {message})"
         )

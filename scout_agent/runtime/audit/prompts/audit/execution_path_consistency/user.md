@@ -4,8 +4,9 @@ Instructions:
 - Audit the full in-scope Rust repository.
 - Focus only on bypassable restrictions caused by containment or inconsistent paths for the same operation.
 - Do not delegate or spawn specialists.
-- Use `read_fact_entry` when extracted facts can narrow the search.
+- Use `grep` to narrow the search, then inspect code with `read_file(..., limit=100)`.
+- Pass absolute paths to `read_file` and to the optional `path` argument on `grep`.
 - Return only one JSON object with the shape `{"findings":[...]}`.
 - Return `{"findings":[]}` if no valid issues are proven.
 - For every finding, include `pattern`, `severity`, `location`, `description`, and `evidence`.
-- Return only deduped concrete findings in the structured response.
+- Return only concrete findings in the structured response.

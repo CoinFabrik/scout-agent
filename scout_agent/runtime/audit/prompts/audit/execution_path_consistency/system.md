@@ -62,7 +62,8 @@ fn transfer_batch(transfers: Vec<(Address, i128)>) {
 2. Use only the provided read-only tools and the repo-scoped backend.
 3. Stay within the listed in-scope production Rust files.
 4. Report only concrete findings supported by code evidence.
-5. Deduplicate equivalent findings before returning them.
+5. Use the official `read_file` tool with `limit=100` for code reads. Request additional windows explicitly when needed.
+6. Pass absolute paths to `read_file` and to the optional `path` argument on `grep`.
 
 ## Output Contract
 - Your final answer must be only one JSON object with the shape `{"findings":[...]}`.
@@ -77,6 +78,5 @@ fn transfer_batch(transfers: Vec<(Address, i128)>) {
 - Do not omit `pattern` from any finding.
 
 ## Available Tools
-- `read_code_chunk` — read sanitized code from a specific in-scope file.
-- `grep` — search across the in-scope Rust files.
-- `read_fact_entry` — inspect the extracted facts entry for one in-scope file from `FACTS.yml`.
+- `read_file` — read an in-scope file with explicit `offset` and `limit` parameters. Use absolute paths. Prefer `limit=100`.
+- `grep` — search across the in-scope Rust files. If you pass `path`, it must be absolute.

@@ -4,18 +4,12 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from scout_agent.app.audit_ui import (
-    AuditProgressSession,
-    AuditUiMode,
-    PlainAuditProgressSession,
-    TextualAuditProgressSession,
-)
+from scout_agent.app.audit_ui import AuditProgressSession, PlainAuditProgressSession
 from scout_agent.domain.audit import AuditState
 from scout_agent.domain.facts import aggregate_facts_file_path
-from scout_agent.runtime.audit.reporting import (
-    AuditProgressReporter,
-    PlainAuditProgressSink,
-)
+from scout_agent.runtime.audit.io.reporting import AuditProgressReporter
+from scout_agent.runtime.extract.reporting import ExtractProgressReporter
+from scout_agent.runtime.progress import LineProgressSink, PlainLineProgressSink
 from scout_agent.runtime.extract.pipeline import ExtractFactsPipelineResult
 
 
@@ -33,16 +27,22 @@ class ConsoleOutput:
     def stdout(self) -> TextIO:
         return self._stdout
 
+    def make_progress_sink(self) -> LineProgressSink:
+        return PlainLineProgressSink(self._stdout)
+
+    def make_extract_progress_reporter(
+        self,
+        *,
+        line_sink: LineProgressSink,
+    ) -> ExtractProgressReporter:
+        return ExtractProgressReporter(line_sink)
+
     def make_audit_progress_session(
         self,
         *,
-        ui_mode: AuditUiMode,
+        line_sink: LineProgressSink,
     ) -> AuditProgressSession:
-        if ui_mode == "plain":
-            return self._make_plain_audit_session()
-        if not _is_tty(self._stdout):
-            return self._make_plain_audit_session()
-        return TextualAuditProgressSession()
+        return self._make_plain_audit_session(line_sink=line_sink)
 
     def print_extract_summary(
         self,
@@ -76,24 +76,15 @@ class ConsoleOutput:
             f"{final_state['execution_path_consistency_completed']}",
             file=self._stdout,
         )
-        print(
-            "Final dedup: "
-            f"{final_state['final_dedup_status']} "
-            f"(removed {final_state['final_dedup_removed_count']})",
-            file=self._stdout,
-        )
 
     def print_error(self, message: str) -> None:
         print(f"Error: {message}", file=self._stderr)
 
-    def _make_plain_audit_session(self) -> PlainAuditProgressSession:
+    def _make_plain_audit_session(
+        self,
+        *,
+        line_sink: LineProgressSink,
+    ) -> PlainAuditProgressSession:
         return PlainAuditProgressSession(
-            reporter=AuditProgressReporter(PlainAuditProgressSink(self._stdout))
+            reporter=AuditProgressReporter(line_sink)
         )
-
-
-def _is_tty(stream: TextIO) -> bool:
-    try:
-        return bool(stream.isatty())
-    except Exception:
-        return False

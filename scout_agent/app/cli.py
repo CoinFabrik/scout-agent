@@ -52,21 +52,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional .txt file whose contents are appended to supervisor and expert prompts.",
     )
     audit_parser.add_argument(
-        "--ui",
-        choices=("tui", "plain"),
-        default="tui",
-        help="Audit progress UI mode. Defaults to 'tui' and falls back to plain output on non-TTY stdout.",
-    )
-    audit_parser.add_argument(
-        "--dump-runtime",
-        action="store_true",
-        help="Write per-file runtime timeline Markdown under <project_root>/.scout-ai/audit-dumps/.",
-    )
-    audit_parser.add_argument(
         "--max-parallel-files",
         type=int,
         default=None,
         help="Maximum number of files to audit in parallel. Defaults to scout.json max_parallel_files or 4.",
+    )
+    audit_parser.add_argument(
+        "--agent-read-limit",
+        type=int,
+        default=None,
+        help="Maximum number of unique files each audit agent can read via read_file. Use 0 to disable the file-count cap. Defaults to scout.json agent_read_limit or 5.",
     )
 
     return parser

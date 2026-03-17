@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from queue import Queue
 from threading import Lock
-from typing import Protocol, TextIO
 
 from scout_agent.domain.audit import Finding
+from scout_agent.runtime.progress import LineProgressSink
 
 
 def format_audit_started_line(
@@ -60,25 +59,6 @@ def format_execution_path_consistency_completed_line() -> str:
     return "Completed repo-wide execution_path_consistency audit"
 
 
-def format_final_dedup_started_line(*, total_findings: int) -> str:
-    return f"Starting final LLM dedup for {total_findings} finding(s)"
-
-
-def format_final_dedup_completed_line(
-    *,
-    remaining_findings: int,
-    removed_count: int,
-) -> str:
-    return (
-        "Completed final LLM dedup: "
-        f"{remaining_findings} finding(s) kept, {removed_count} duplicate(s) removed"
-    )
-
-
-def format_final_dedup_skipped_line(*, reason: str) -> str:
-    return f"Skipped final LLM dedup: {reason}"
-
-
 def format_audit_expert_spawned_line(
     *,
     expert_name: str,
@@ -95,6 +75,7 @@ def format_audit_tool_used_line(
     line_end: int | None = None,
     offset: int | None = None,
     limit: int | None = None,
+    pattern: str | None = None,
 ) -> str:
     actor = _resolve_actor_name(actor_name)
     parts = [
@@ -102,6 +83,8 @@ def format_audit_tool_used_line(
         f"tool={tool_name}",
         f"target={target}",
     ]
+    if pattern is not None:
+        parts.append(f"pattern={pattern!r}")
     if line_start is not None and line_end is not None:
         parts.append(f"lines={line_start}-{line_end}")
     if offset is not None:
@@ -118,13 +101,19 @@ def format_audit_tool_denied_line(
     current_file: str,
     reason: str,
     actor_name: str | None = None,
+    pattern: str | None = None,
 ) -> str:
     actor = _resolve_actor_name(actor_name)
-    return (
-        "Tool denied: "
-        f"actor={actor} tool={tool_name} target={target} "
-        f"current={current_file} reason={reason}"
-    )
+    parts = [
+        f"actor={actor}",
+        f"tool={tool_name}",
+        f"target={target}",
+    ]
+    if pattern is not None:
+        parts.append(f"pattern={pattern!r}")
+    parts.append(f"current={current_file}")
+    parts.append(f"reason={reason}")
+    return "Tool denied: " + " ".join(parts)
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,55 +124,8 @@ class AuditStatusSnapshot:
     verified_findings: int = 0
 
 
-@dataclass(frozen=True, slots=True)
-class AuditProgressEvent:
-    line: str | None
-    status: AuditStatusSnapshot
-    close: bool = False
-
-
-class AuditProgressSink(Protocol):
-    def emit(self, *, line: str, status: AuditStatusSnapshot) -> None: ...
-
-    def close(self, *, status: AuditStatusSnapshot) -> None: ...
-
-
-class PlainAuditProgressSink:
-    def __init__(self, stdout: TextIO) -> None:
-        self._stdout = stdout
-        self._lock = Lock()
-
-    def emit(self, *, line: str, status: AuditStatusSnapshot) -> None:
-        _ = status
-        with self._lock:
-            print(line, file=self._stdout, flush=True)
-
-    def close(self, *, status: AuditStatusSnapshot) -> None:
-        _ = status
-
-
-class QueueAuditProgressSink:
-    def __init__(
-        self,
-        event_queue: Queue[AuditProgressEvent] | None = None,
-    ) -> None:
-        self._event_queue = event_queue or Queue()
-
-    @property
-    def event_queue(self) -> Queue[AuditProgressEvent]:
-        return self._event_queue
-
-    def emit(self, *, line: str, status: AuditStatusSnapshot) -> None:
-        self._event_queue.put(AuditProgressEvent(line=line, status=status))
-
-    def close(self, *, status: AuditStatusSnapshot) -> None:
-        self._event_queue.put(
-            AuditProgressEvent(line=None, status=status, close=True)
-        )
-
-
 class AuditProgressReporter:
-    def __init__(self, sink: AuditProgressSink) -> None:
+    def __init__(self, sink: LineProgressSink) -> None:
         self._sink = sink
         self._status = AuditStatusSnapshot()
         self._closed = False
@@ -250,26 +192,6 @@ class AuditProgressReporter:
     def execution_path_consistency_completed(self) -> None:
         self._emit(format_execution_path_consistency_completed_line())
 
-    def final_dedup_started(self, *, total_findings: int) -> None:
-        self._emit(format_final_dedup_started_line(total_findings=total_findings))
-
-    def final_dedup_completed(
-        self,
-        *,
-        remaining_findings: int,
-        removed_count: int,
-    ) -> None:
-        self._emit(
-            format_final_dedup_completed_line(
-                remaining_findings=remaining_findings,
-                removed_count=removed_count,
-            ),
-            verified_findings=remaining_findings,
-        )
-
-    def final_dedup_skipped(self, *, reason: str) -> None:
-        self._emit(format_final_dedup_skipped_line(reason=reason))
-
     def file_completed(
         self,
         *,
@@ -305,6 +227,7 @@ class AuditProgressReporter:
         line_end: int | None = None,
         offset: int | None = None,
         limit: int | None = None,
+        pattern: str | None = None,
     ) -> None:
         self._emit(
             format_audit_tool_used_line(
@@ -315,6 +238,7 @@ class AuditProgressReporter:
                 line_end=line_end,
                 offset=offset,
                 limit=limit,
+                pattern=pattern,
             )
         )
 
@@ -326,6 +250,7 @@ class AuditProgressReporter:
         current_file: str,
         reason: str,
         actor_name: str | None = None,
+        pattern: str | None = None,
     ) -> None:
         self._emit(
             format_audit_tool_denied_line(
@@ -334,6 +259,7 @@ class AuditProgressReporter:
                 current_file=current_file,
                 reason=reason,
                 actor_name=actor_name,
+                pattern=pattern,
             )
         )
 
@@ -342,8 +268,7 @@ class AuditProgressReporter:
             if self._closed:
                 return
             self._closed = True
-            status = self._status
-        self._sink.close(status=status)
+        self._sink.close()
 
     def _emit(self, line: str, **status_updates: int | str) -> None:
         with self._lock:
@@ -351,8 +276,7 @@ class AuditProgressReporter:
                 return
             if status_updates:
                 self._status = replace(self._status, **status_updates)
-            status = self._status
-        self._sink.emit(line=line, status=status)
+        self._sink.emit(line)
 
 
 def _resolve_actor_name(actor_name: str | None) -> str:

@@ -13,6 +13,7 @@ DEFAULT_REPORT_FILENAME: Final[str] = "REPORT.md"
 MODEL_ENV_VAR: Final[str] = "SCOUT_MODEL"
 DEFAULT_MAX_PARALLEL_FILES: Final[int] = 4
 MAX_MAX_PARALLEL_FILES: Final[int] = 100
+DEFAULT_AGENT_READ_LIMIT: Final[int] = 5
 
 
 def resolve_project_root(raw_path: str) -> Path:
@@ -113,6 +114,21 @@ def resolve_max_parallel_files(
         raise ValueError(
             f"max_parallel_files must be between 1 and {MAX_MAX_PARALLEL_FILES}; got {candidate}"
         )
+
+    return candidate
+
+
+def resolve_agent_read_limit(
+    cli_value: int | None,
+    *,
+    fallback: int | None = None,
+) -> int:
+    candidate = cli_value if cli_value is not None else fallback
+    if candidate is None:
+        candidate = DEFAULT_AGENT_READ_LIMIT
+
+    if candidate < 0:
+        raise ValueError(f"agent_read_limit must be >= 0; got {candidate}")
 
     return candidate
 

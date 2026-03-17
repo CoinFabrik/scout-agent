@@ -12,7 +12,7 @@ from scout_agent.domain.facts import (
 from scout_agent.llm.providers import resolve_model_identifier
 from scout_agent.runtime.extract.execution import execute_extract_tasks
 from scout_agent.runtime.extract.reporting import ExtractProgressReporter
-from scout_agent.runtime.source.discovery import discover_rust_files
+from scout_agent.runtime.source.scope import discover_in_scope_files_or_raise
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,16 +29,10 @@ def run_extract_facts_pipeline(
     reporter: ExtractProgressReporter,
 ) -> ExtractFactsPipelineResult:
     model_name = resolve_model_identifier(settings.model_name)
-    discovered_files = discover_rust_files(
-        settings.project_root,
+    discovered_files = discover_in_scope_files_or_raise(
+        project_root=settings.project_root,
         configured_paths=settings.scout_files,
     )
-
-    if not discovered_files:
-        raise ValueError(
-            "No in-scope production Rust source files were discovered under "
-            f"{settings.project_root}"
-        )
 
     file_count = len(discovered_files)
 

@@ -13,6 +13,7 @@ from tenacity.wait import wait_exponential_jitter
 
 from scout_agent.domain.facts import FunctionSummary
 from scout_agent.llm.providers import build_chat_model
+from scout_agent.runtime.prompt_loader import load_prompt_asset
 from scout_agent.runtime.source.rust_parser import ParsedRustFile, ParsedRustFunction
 
 EXTRACTION_RETRY_NOTE = (
@@ -196,13 +197,11 @@ def _merge_extracted_file_facts(
 
 @cache
 def _load_extract_facts_system_prompt() -> str:
-    prompt_path = (
-        Path(__file__).resolve().parent.parent / "prompts" / "extract_facts_system.md"
+    return load_prompt_asset(
+        Path(__file__).resolve().parent.parent / "prompts",
+        "extract_facts_system.md",
+        empty_error_label="Extract facts system prompt",
     )
-    prompt_text = prompt_path.read_text(encoding="utf-8").strip()
-    if not prompt_text:
-        raise ValueError(f"Extract facts system prompt is empty: {prompt_path}")
-    return prompt_text
 
 
 def build_extraction_retrying() -> Retrying:

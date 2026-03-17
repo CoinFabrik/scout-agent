@@ -22,7 +22,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_extract_facts_command(args, output)
 
         if args.command == "audit":
-            return run_audit_command(args, output=output)
+            return run_audit_command(args, output)
 
         raise CommandError(f"Unknown command: {args.command}")
     except CommandError as exc:

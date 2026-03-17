@@ -13,9 +13,7 @@ from scout_agent.domain.facts import (
     load_aggregate_facts_document,
     load_facts_document,
 )
-from scout_agent.runtime.source.discovery import (
-    discover_rust_files,
-)
+from scout_agent.runtime.source.scope import discover_in_scope_files_or_raise
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,15 +31,10 @@ def initialize_audit(
     resolved_project_root = project_root.resolve()
     resolved_facts_path = facts_path.resolve()
 
-    discovered_files = discover_rust_files(
-        resolved_project_root,
+    discovered_files = discover_in_scope_files_or_raise(
+        project_root=resolved_project_root,
         configured_paths=scout_files,
     )
-    if not discovered_files:
-        raise ValueError(
-            "No in-scope production Rust source files were discovered under "
-            f"{resolved_project_root}"
-        )
 
     aggregate_document = load_aggregate_facts_document(
         aggregate_facts_file_path(resolved_facts_path)
@@ -86,9 +79,6 @@ def initialize_audit(
         "files_to_review": files_to_review,
         "files_reviewed": [],
         "execution_path_consistency_completed": False,
-        "final_dedup_status": "not_run",
-        "final_dedup_removed_count": 0,
-        "pre_final_dedup_finding_count": 0,
         "verified_findings": [],
     }
 
@@ -186,9 +176,9 @@ def _validate_facts_document_against_aggregate(
             f"aggregate FACTS recorded {aggregate_facts_document.llm_mode}."
         )
 
-    if _dump_aggregate_file_facts(aggregate_file_facts) != _dump_facts_document_functions(
-        facts_document
-    ):
+    if _serialize_aggregate_file_facts(
+        aggregate_file_facts
+    ) != _serialize_facts_document_functions(facts_document):
         raise ValueError(
             "Facts document functions do not match aggregate FACTS entry. "
             f"Mismatched file: {expected_relative_path}. "
@@ -196,13 +186,13 @@ def _validate_facts_document_against_aggregate(
         )
 
 
-def _dump_aggregate_file_facts(
+def _serialize_aggregate_file_facts(
     aggregate_file_facts: AggregateFileFacts,
 ) -> dict[str, object]:
     return aggregate_file_facts.model_dump(mode="python")["functions"]
 
 
-def _dump_facts_document_functions(
+def _serialize_facts_document_functions(
     facts_document: FactsDocument,
 ) -> dict[str, object]:
     return facts_document.model_dump(mode="python")["functions"]

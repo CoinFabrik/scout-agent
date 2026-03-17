@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Mapping, Set
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
 from langchain_core.callbacks.base import BaseCallbackHandler
-from scout_agent.domain.audit import ExpertResult
-from scout_agent.runtime.audit.dump import (
-    AuditDumpWriter,
-    build_preview_text,
-    extract_message_text,
-)
-from scout_agent.runtime.audit.reporting import AuditProgressReporter
+
+from scout_agent.runtime.audit.io.reporting import AuditProgressReporter
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,12 +17,10 @@ class _ToolRunContext:
     target: str
     line_start: int | None
     line_end: int | None
-    max_lines: int | None
     offset: int | None
     limit: int | None
+    pattern: str | None
     current_file: str
-    actor_run_id: str | None
-    tool_call_id: str
 
 
 class RuntimeProgressHandler(BaseCallbackHandler):
@@ -39,16 +32,12 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         reporter: AuditProgressReporter,
         expert_names: set[str],
         current_file: str,
-        dump_writer: AuditDumpWriter | None = None,
         primary_actor_name: str = "supervisor",
-        dump_scope: str = "file",
     ) -> None:
         self._reporter = reporter
         self._expert_names = expert_names
         self._current_file = current_file
-        self._dump_writer = dump_writer
         self._primary_actor_name = primary_actor_name
-        self._dump_scope = dump_scope
         self._active_experts: set[str] = set()
         self._run_to_expert: dict[UUID, str] = {}
         self._tool_runs: dict[UUID, _ToolRunContext] = {}
@@ -64,12 +53,15 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
-        expert_name = _resolve_expert_name(
+        _ = (inputs, parent_run_id, tags, kwargs)
+        expert_name = _resolve_expert_chain_name(
             expert_names=self._expert_names,
             metadata=metadata,
             serialized=serialized,
         )
         if expert_name not in self._expert_names:
+            return
+        if parent_run_id is not None and parent_run_id in self._run_to_expert:
             return
 
         self._run_to_expert[run_id] = expert_name
@@ -78,61 +70,17 @@ class RuntimeProgressHandler(BaseCallbackHandler):
 
         self._active_experts.add(expert_name)
         self._reporter.expert_spawned(expert_name=expert_name)
-        if self._dump_writer is not None:
-            self._dump_writer.record_supervisor_event(
-                relative_path=self._current_file,
-                event_type="delegated_expert",
-                expert_name=expert_name,
-                expert_actor_run_id=str(run_id),
-            )
-            self._dump_writer.record_expert_event(
-                relative_path=self._current_file,
-                expert_name=expert_name,
-                event_type="started",
-                actor_run_id=str(run_id),
-            )
 
     def on_chain_end(
         self,
-        outputs: dict[str, Any],
+        outputs: Any,
         *,
         run_id: UUID,
         parent_run_id: UUID | None = None,
         tags: list[str] | None = None,
         **kwargs: Any,
     ) -> None:
-        _ = (parent_run_id, tags, kwargs)
-        expert_name = self._run_to_expert.get(run_id)
-        if expert_name is not None and self._dump_writer is not None:
-            result = _extract_expert_result(outputs)
-            if result is not None:
-                final_message_text = _extract_final_message_text(outputs)
-                payload: dict[str, object] = {
-                    "status": result.status,
-                    "final_message_text": final_message_text,
-                    "final_message_truncated": (
-                        False if final_message_text else None
-                    ),
-                }
-                if result.finding is not None:
-                    payload["finding_summary"] = {
-                        "pattern": result.finding.pattern,
-                        "severity": result.finding.severity,
-                        "location": result.finding.location,
-                    }
-                self._dump_writer.record_expert_event(
-                    relative_path=self._current_file,
-                    expert_name=expert_name,
-                    event_type="result",
-                    actor_run_id=str(run_id),
-                    **payload,
-                )
-            self._dump_writer.record_expert_event(
-                relative_path=self._current_file,
-                expert_name=expert_name,
-                event_type="completed",
-                actor_run_id=str(run_id),
-            )
+        _ = (outputs, parent_run_id, tags, kwargs)
         self._finish_expert_run(run_id)
 
     def on_chain_error(
@@ -159,7 +107,8 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         inputs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
-        expert_name = _resolve_expert_name(
+        _ = (input_str, tags, kwargs)
+        expert_name = _resolve_tool_expert_name(
             expert_names=self._expert_names,
             metadata=metadata,
             serialized=serialized,
@@ -171,22 +120,20 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             if isinstance(serialized, dict)
             else "unknown_tool"
         )
-        if expert_name == "unknown_subagent" and (
-            not self._expert_names or not _is_expert_tool(tool_name)
-        ):
+        if expert_name == "unknown_subagent":
             expert_name = None
 
         safe_inputs = inputs if isinstance(inputs, dict) else {}
-        target = _resolve_tool_target(
-            safe_inputs,
-            fallback=self._current_file,
-        )
+        target = _resolve_tool_target(safe_inputs, fallback=self._current_file)
         line_start, line_end = _resolve_line_range(safe_inputs)
-        max_lines = _coerce_optional_int(safe_inputs.get("max_lines"))
         offset = _coerce_optional_int(safe_inputs.get("offset"))
         limit = _coerce_optional_int(safe_inputs.get("limit"))
+        
+        pattern = safe_inputs.get("pattern")
+        if not isinstance(pattern, str):
+            pattern = None
+
         current_file = _ensure_leading_slash(self._current_file)
-        actor_run_id = str(parent_run_id) if parent_run_id is not None else None
 
         self._tool_runs[run_id] = _ToolRunContext(
             expert_name=expert_name,
@@ -194,12 +141,10 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             target=target,
             line_start=line_start,
             line_end=line_end,
-            max_lines=max_lines,
             offset=offset,
             limit=limit,
+            pattern=pattern,
             current_file=current_file,
-            actor_run_id=actor_run_id,
-            tool_call_id=str(run_id),
         )
 
     def on_tool_end(
@@ -215,14 +160,14 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         if context is None:
             return
 
-        if isinstance(output, str) and output.startswith("Error:"):
+        output_text = _extract_tool_output_text(output)
+        if output_text is not None and output_text.startswith("Error:"):
             self._report_tool_denied(
                 context=context,
-                reason=output.removeprefix("Error:").strip(),
+                reason=output_text.removeprefix("Error:").strip(),
             )
             return
 
-        preview_text, preview_truncated = build_preview_text(output)
         self._reporter.tool_used(
             tool_name=context.tool_name,
             target=context.target,
@@ -235,13 +180,8 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             line_end=context.line_end,
             offset=context.offset,
             limit=context.limit,
+            pattern=context.pattern,
         )
-        if self._dump_writer is not None:
-            self._report_tool_used_to_dump(
-                context=context,
-                preview_text=preview_text,
-                preview_truncated=preview_truncated,
-            )
 
     def on_tool_error(
         self,
@@ -287,105 +227,11 @@ class RuntimeProgressHandler(BaseCallbackHandler):
                 if context.expert_name is not None
                 else self._primary_actor_name
             ),
-        )
-        if self._dump_writer is not None:
-            self._report_tool_denied_to_dump(
-                context=context,
-                reason=reason,
-            )
-
-    def _report_tool_used_to_dump(
-        self,
-        *,
-        context: _ToolRunContext,
-        preview_text: str | None,
-        preview_truncated: bool | None,
-    ) -> None:
-        if context.expert_name is None:
-            self._record_primary_actor_event(
-                event_type="tool_used",
-                tool_name=context.tool_name,
-                target=context.target,
-                line_start=context.line_start,
-                line_end=context.line_end,
-                max_lines=context.max_lines,
-                offset=context.offset,
-                limit=context.limit,
-                preview_text=preview_text,
-                preview_truncated=preview_truncated,
-                tool_call_id=context.tool_call_id,
-            )
-            return
-
-        self._dump_writer.record_expert_event(
-            relative_path=self._current_file,
-            expert_name=context.expert_name,
-            event_type="tool_used",
-            actor_run_id=context.actor_run_id,
-            tool_name=context.tool_name,
-            target=context.target,
-            line_start=context.line_start,
-            line_end=context.line_end,
-            max_lines=context.max_lines,
-            offset=context.offset,
-            limit=context.limit,
-            preview_text=preview_text,
-            preview_truncated=preview_truncated,
-            tool_call_id=context.tool_call_id,
-        )
-
-    def _report_tool_denied_to_dump(
-        self,
-        *,
-        context: _ToolRunContext,
-        reason: str,
-    ) -> None:
-        if context.expert_name is None:
-            self._record_primary_actor_event(
-                event_type="tool_denied",
-                tool_name=context.tool_name,
-                target=context.target,
-                current_file=context.current_file,
-                reason=reason,
-                tool_call_id=context.tool_call_id,
-            )
-            return
-
-        self._dump_writer.record_expert_event(
-            relative_path=self._current_file,
-            expert_name=context.expert_name,
-            event_type="tool_denied",
-            actor_run_id=context.actor_run_id,
-            tool_name=context.tool_name,
-            target=context.target,
-            current_file=context.current_file,
-            reason=reason,
-            tool_call_id=context.tool_call_id,
-        )
-
-    def _record_primary_actor_event(
-        self,
-        *,
-        event_type: str,
-        **payload: object,
-    ) -> None:
-        if self._dump_scope == "repo":
-            self._dump_writer.record_repo_event(
-                actor_name=self._primary_actor_name,
-                event_type=event_type,
-                **payload,
-            )
-            return
-
-        self._dump_writer.record_supervisor_event(
-            relative_path=self._current_file,
-            event_type=event_type,
-            **payload,
+            pattern=context.pattern,
         )
 
 
 def _resolve_tool_target(inputs: dict[str, Any], *, fallback: str) -> str:
-    # Prioritize path for grep/filesystem tools, then file-specific keys
     for key in ["path", "file", "file_path"]:
         target = inputs.get(key)
         if isinstance(target, str) and target.strip():
@@ -435,15 +281,48 @@ def _resolve_expert_name(
         _candidate_from_serialized_name(serialized),
         _candidate_from_serialized_id(serialized),
     ):
-        if candidate in expert_names:
+        if candidate is not None and candidate in expert_names:
             return candidate
 
     if parent_run_id is not None and run_to_expert is not None:
         parent_candidate = run_to_expert.get(parent_run_id)
-        if parent_candidate in expert_names:
+        if parent_candidate is not None and parent_candidate in expert_names:
             return parent_candidate
 
     return "unknown_subagent"
+
+
+def _resolve_expert_chain_name(
+    *,
+    expert_names: Set[str],
+    metadata: Mapping[str, Any] | None,
+    serialized: Mapping[str, Any] | None,
+) -> str:
+    for candidate in (
+        _candidate_from_metadata(metadata),
+        _candidate_from_serialized_name(serialized),
+    ):
+        if candidate is not None and candidate in expert_names:
+            return candidate
+
+    return "unknown_subagent"
+
+
+def _resolve_tool_expert_name(
+    *,
+    expert_names: Set[str],
+    metadata: Mapping[str, Any] | None,
+    serialized: Mapping[str, Any] | None,
+    parent_run_id: UUID | None = None,
+    run_to_expert: Mapping[UUID, str] | None = None,
+) -> str:
+    return _resolve_expert_name(
+        expert_names=expert_names,
+        metadata=metadata,
+        serialized=serialized,
+        parent_run_id=parent_run_id,
+        run_to_expert=run_to_expert,
+    )
 
 
 def _candidate_from_metadata(metadata: Mapping[str, Any] | None) -> str | None:
@@ -480,7 +359,7 @@ def _coerce_non_empty_string(value: object) -> str | None:
 
 
 def _is_expert_tool(tool_name: str) -> bool:
-    return tool_name == "read_code_chunk"
+    return tool_name in {"read_file", "grep"}
 
 
 def _tool_error_reason(error: BaseException) -> str:
@@ -490,49 +369,36 @@ def _tool_error_reason(error: BaseException) -> str:
     return type(error).__name__
 
 
-def _extract_expert_result(outputs: dict[str, Any]) -> ExpertResult | None:
-    candidates: list[object] = []
-    structured = outputs.get("structured_response")
-    if structured is not None:
-        candidates.append(structured)
+def _extract_tool_output_text(output: Any) -> str | None:
+    if isinstance(output, str):
+        return output
 
-    output_value = outputs.get("output")
-    if output_value is not None:
-        candidates.append(output_value)
+    if isinstance(output, dict):
+        for key in ("content", "output", "text"):
+            value = output.get(key)
+            text = _coerce_tool_output_text(value)
+            if text is not None:
+                return text
+        return None
 
-    candidates.append(outputs)
+    return _coerce_tool_output_text(getattr(output, "content", None))
 
-    for candidate in candidates:
-        if isinstance(candidate, ExpertResult):
-            return candidate
-        if isinstance(candidate, dict):
-            try:
-                return ExpertResult.model_validate(candidate)
-            except ValueError:
+
+def _coerce_tool_output_text(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+
+    if isinstance(value, list):
+        parts: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                parts.append(item)
                 continue
-        if isinstance(candidate, str):
-            try:
-                return ExpertResult.model_validate_json(candidate)
-            except ValueError:
-                continue
-    return None
-
-
-def _extract_final_message_text(outputs: dict[str, Any]) -> str | None:
-    messages = outputs.get("messages")
-    if isinstance(messages, list) and messages:
-        extracted = extract_message_text(messages[-1])
-        if extracted:
-            return extracted
-
-    output_value = outputs.get("output")
-    if isinstance(output_value, str):
-        extracted = extract_message_text(output_value)
-        if extracted:
-            return extracted
-    if hasattr(output_value, "content"):
-        extracted = extract_message_text(output_value)
-        if extracted:
-            return extracted
+            if isinstance(item, dict):
+                text_value = item.get("text")
+                if isinstance(text_value, str):
+                    parts.append(text_value)
+        joined = "\n".join(part for part in parts if part)
+        return joined or None
 
     return None

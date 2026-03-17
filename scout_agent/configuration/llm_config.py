@@ -14,7 +14,7 @@ DEFAULT_SEED: Final[int] = 42
 # Responses API, so only the GPT-5.1 line gets the automatic reasoning default
 # on this transport.
 OPENAI_REASONING_MODEL_PREFIXES: Final[tuple[str, ...]] = (
-    "gpt-5.1",
+    "gpt-5.4",
     "o1",
     "o3",
     "o4",
