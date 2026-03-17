@@ -11,7 +11,7 @@ dependencies = [
     "langchain-openai>=1.1.11",
     "langgraph>=1.1.2",
     "pydantic>=2.12.5",
-    "python-dotenv>=1.2.2",
+    "python-dotenv>=1.2.1",
     "pyyaml>=6.0.3",
     "tenacity>=9.1.4",
     "tree_sitter>=0.25.2",
@@ -34,11 +34,11 @@ include = ["scout_agent*"]
 
 [tool.setuptools.package-data]
 scout_agent = [
-    "runtime/prompts/*.md",
-    "runtime/prompts/*/*.md",
-    "runtime/prompts/*/*/*.md",
-    "runtime/prompts/*/*/*/*.md",
-    "runtime/prompts/*/*/*/*/*.md",
+    "runtime/audit/prompts/*.md",
+    "runtime/audit/prompts/*/*.md",
+    "runtime/audit/prompts/*/*/*.md",
+    "runtime/audit/prompts/*/*/*/*.md",
+    "runtime/audit/prompts/*/*/*/*/*.md",
 ]
 
 [tool.pytest.ini_options]

@@ -198,7 +198,7 @@ def _merge_extracted_file_facts(
 @cache
 def _load_extract_facts_system_prompt() -> str:
     return load_prompt_asset(
-        Path(__file__).resolve().parent.parent / "prompts",
+        Path(__file__).resolve().parent.parent / "audit" / "prompts",
         "extract_facts_system.md",
         empty_error_label="Extract facts system prompt",
     )
