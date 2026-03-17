@@ -34,6 +34,7 @@ def build_readonly_tools(
 
     backend = FilesystemBackend(root_dir=root_dir, virtual_mode=False)
     read_policy = _AgentReadPolicy(max_unique_files=agent_read_limit)
+    grep_policy = _AgentGrepPolicy()
 
     def resolve_in_scope(raw_path: str | None, *, field_name: str) -> Path:
         candidate = grep_path if raw_path is None else Path(raw_path).expanduser()
@@ -42,7 +43,7 @@ def build_readonly_tools(
                 _error(
                     "PATH_NOT_ABSOLUTE",
                     f"`{field_name}` must be an absolute path inside the allowed scope. Received: {candidate}.",
-                    "Use an absolute path returned by `grep`.",
+                    "Use an absolute path returned by `grep`. If no `grep` matches yet, ensure you are searching from the absolute project root.",
                 )
             )
 
@@ -140,12 +141,32 @@ def build_readonly_tools(
         After finding a promising result, use `read_file` to inspect the surrounding content.
         """
         try:
+            resolved_path = resolve_in_scope(path, field_name="path")
+            with grep_policy.lock:
+                reason = grep_policy.check_grep_allowed(
+                    pattern=pattern,
+                    path=resolved_path,
+                    glob=glob,
+                )
+                if reason is not None:
+                    return reason
+
             result = backend.grep_raw(
                 pattern,
-                path=resolve_in_scope(path, field_name="path").as_posix(),
+                path=resolved_path.as_posix(),
                 glob=glob,
             )
             rendered = result if isinstance(result, str) else str(result)
+
+            if rendered.startswith("Error:") or rendered.startswith("Error["):
+                return rendered
+
+            with grep_policy.lock:
+                grep_policy.record_success(
+                    pattern=pattern,
+                    path=resolved_path,
+                    glob=glob,
+                )
             return rendered
         except FileNotFoundError:
             bad_path = path if path is not None else grep_path.as_posix()
@@ -215,3 +236,41 @@ class _AgentReadPolicy:
         normalized_path = file_path.as_posix()
         self.read_files.add(normalized_path)
         self.read_spans.add((normalized_path, offset, limit))
+
+
+class _AgentGrepPolicy:
+    def __init__(self) -> None:
+        self.grep_calls: set[tuple[str, str, str | None]] = set()
+        self.lock = Lock()
+
+    def check_grep_allowed(
+        self,
+        *,
+        pattern: str,
+        path: Path,
+        glob: str | None,
+    ) -> str | None:
+        normalized_path = path.as_posix()
+        call = (pattern, normalized_path, glob)
+
+        if call in self.grep_calls:
+            return _error(
+                "REPETITIVE_GREP",
+                (
+                    "This exact grep call was already made. "
+                    f"pattern='{pattern}', path='{normalized_path}', glob='{glob}'."
+                ),
+                "Change the pattern, path, or glob to search differently, or use `read_file` on one of the previously found results.",
+            )
+
+        return None
+
+    def record_success(
+        self,
+        *,
+        pattern: str,
+        path: Path,
+        glob: str | None,
+    ) -> None:
+        normalized_path = path.as_posix()
+        self.grep_calls.add((pattern, normalized_path, glob))
