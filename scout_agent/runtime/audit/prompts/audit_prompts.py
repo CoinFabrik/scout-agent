@@ -38,6 +38,7 @@ _EXPERT_FEW_SHOT_FILES = {
 def build_expert_system_prompt(
     *,
     expert_name: str,
+    project_root: Path,
     extra_prompt: str | None = None,
 ) -> str:
     prompt_file = _EXPERT_SYSTEM_PROMPT_FILES.get(expert_name)
@@ -51,6 +52,8 @@ def build_expert_system_prompt(
             preserve_trailing_newline=True,
             empty_error_label="Audit prompt",
         ).rstrip(),
+        f"## Scope\n\nProject root (absolute): {project_root.as_posix()}\n"
+        "All file paths and `grep` paths must be absolute, starting from the project root above.",
     ]
     few_shots = load_optional_prompt_asset(
         _PROMPTS_DIR,

@@ -50,6 +50,7 @@ def build_expert_subagents(
     for spec in SUBAGENT_MANIFEST:
         full_prompt = build_expert_system_prompt(
             expert_name=spec.name,
+            project_root=project_root,
             extra_prompt=extra_prompt,
         )
 
