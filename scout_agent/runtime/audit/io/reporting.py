@@ -51,6 +51,15 @@ def format_audit_file_completed_line(
     return f"Completed {reviewed}/{total}: {current_file}"
 
 
+def format_audit_file_failed_line(
+    *,
+    current_file: str,
+    error_type: str,
+    message: str,
+) -> str:
+    return f"Failed: {current_file}: {error_type}: {message}"
+
+
 def format_execution_path_consistency_started_line() -> str:
     return "Starting repo-wide execution_path_consistency audit"
 
@@ -208,6 +217,22 @@ class AuditProgressReporter:
             current_file=current_file,
             reviewed=reviewed,
             total=total,
+        )
+
+    def file_failed(
+        self,
+        *,
+        current_file: str,
+        error_type: str,
+        message: str,
+    ) -> None:
+        self._emit(
+            format_audit_file_failed_line(
+                current_file=current_file,
+                error_type=error_type,
+                message=message,
+            ),
+            current_file=current_file,
         )
 
     def expert_spawned(

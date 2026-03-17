@@ -175,10 +175,12 @@ def run_audit(
                                 message=str(exc),
                             )
                         )
+                        runtime.reporter.file_failed(
+                            current_file="execution_path_consistency",
+                            error_type=type(exc).__name__,
+                            message=str(exc),
+                        )
                         execution_path_consistency_future = None
-                        stop_submission = True
-                        for pending_future in active:
-                            pending_future.cancel()
                         continue
 
                     execution_path_consistency_future = None
@@ -206,11 +208,11 @@ def run_audit(
                             message=str(exc),
                         )
                     )
-                    stop_submission = True
-                    if execution_path_consistency_future is not None:
-                        execution_path_consistency_future.cancel()
-                    for pending_future in active:
-                        pending_future.cancel()
+                    runtime.reporter.file_failed(
+                        current_file=task.relative_path,
+                        error_type=type(exc).__name__,
+                        message=str(exc),
+                    )
                     continue
 
                 completed_count += 1
