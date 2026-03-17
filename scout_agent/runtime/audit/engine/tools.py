@@ -7,7 +7,7 @@ from deepagents.backends import FilesystemBackend
 from langchain.tools import tool
 from langchain_core.tools import BaseTool
 
-DEFAULT_AGENT_READ_LIMIT = 5
+DEFAULT_AGENT_READ_LIMIT = 10
 DEFAULT_SINGLE_READ_LIMIT = 2_000
 
 
