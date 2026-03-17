@@ -161,7 +161,9 @@ class RuntimeProgressHandler(BaseCallbackHandler):
             return
 
         output_text = _extract_tool_output_text(output)
-        if output_text is not None and output_text.startswith("Error:"):
+        if output_text is not None and (
+            output_text.startswith("Error:") or output_text.startswith("Error[")
+        ):
             self._report_tool_denied(
                 context=context,
                 reason=output_text.removeprefix("Error:").strip(),
