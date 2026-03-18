@@ -38,6 +38,7 @@ _EXPERT_FEW_SHOT_FILES = {
 def build_expert_system_prompt(
     *,
     expert_name: str,
+    project_root: Path,
     extra_prompt: str | None = None,
 ) -> str:
     prompt_file = _EXPERT_SYSTEM_PROMPT_FILES.get(expert_name)
@@ -51,6 +52,10 @@ def build_expert_system_prompt(
             preserve_trailing_newline=True,
             empty_error_label="Audit prompt",
         ).rstrip(),
+        f"## Scope\n\nProject root (absolute): {project_root.as_posix()}\n\n"
+        "Instructions for paths:\n"
+        "1. All tool calls (read_file, grep) MUST use absolute paths starting from the project root above.\n"
+        "2. All reported finding 'location' fields MUST use relative paths from the project root (e.g., 'src/lib.rs:10').",
     ]
     few_shots = load_optional_prompt_asset(
         _PROMPTS_DIR,
@@ -123,7 +128,10 @@ def build_execution_path_consistency_system_prompt(
     system_prompt = (
         f"{load_prompt_asset(_PROMPTS_DIR, _EXECUTION_PATH_CONSISTENCY_SYSTEM_PROMPT_FILE, preserve_trailing_newline=True, empty_error_label='Audit prompt')}\n\n"
         "## Scope\n\n"
-        f"Project root: {aggregate_facts_document.project_root}\n\n"
+        f"Project root (absolute): {aggregate_facts_document.project_root}\n\n"
+        "Instructions for paths:\n"
+        "1. All tool calls (read_file, grep) MUST use absolute paths starting from the project root above.\n"
+        "2. All reported finding 'location' fields MUST use relative paths from the project root (e.g., 'src/lib.rs:10').\n\n"
         "In-scope production Rust files:\n"
         f"{file_list}"
     )

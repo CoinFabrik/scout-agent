@@ -13,7 +13,7 @@ DEFAULT_REPORT_FILENAME: Final[str] = "REPORT.md"
 MODEL_ENV_VAR: Final[str] = "SCOUT_MODEL"
 DEFAULT_MAX_PARALLEL_FILES: Final[int] = 4
 MAX_MAX_PARALLEL_FILES: Final[int] = 100
-DEFAULT_AGENT_READ_LIMIT: Final[int] = 5
+DEFAULT_AGENT_READ_LIMIT: Final[int] = 15
 
 
 def resolve_project_root(raw_path: str) -> Path:

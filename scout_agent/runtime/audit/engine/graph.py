@@ -175,10 +175,12 @@ def run_audit(
                                 message=str(exc),
                             )
                         )
+                        runtime.reporter.file_failed(
+                            current_file="execution_path_consistency",
+                            error_type=type(exc).__name__,
+                            message=str(exc),
+                        )
                         execution_path_consistency_future = None
-                        stop_submission = True
-                        for pending_future in active:
-                            pending_future.cancel()
                         continue
 
                     execution_path_consistency_future = None
@@ -206,11 +208,11 @@ def run_audit(
                             message=str(exc),
                         )
                     )
-                    stop_submission = True
-                    if execution_path_consistency_future is not None:
-                        execution_path_consistency_future.cancel()
-                    for pending_future in active:
-                        pending_future.cancel()
+                    runtime.reporter.file_failed(
+                        current_file=task.relative_path,
+                        error_type=type(exc).__name__,
+                        message=str(exc),
+                    )
                     continue
 
                 completed_count += 1
@@ -317,6 +319,9 @@ def _merge_findings(
     finding_keys: set[str],
 ) -> None:
     for finding in response.findings:
+        finding.location = _relativize_location(
+            finding.location, runtime.project_root
+        )
         finding_key = _make_finding_key(finding)
         if finding_key in finding_keys:
             continue
@@ -326,6 +331,25 @@ def _merge_findings(
             total_verified_findings=len(state["verified_findings"]),
             finding=finding,
         )
+
+
+def _relativize_location(location: str, project_root: Path) -> str:
+    if ":" not in location:
+        return location
+
+    parts = location.rsplit(":", 1)
+    path_part = parts[0]
+    line_part = parts[1]
+
+    try:
+        path = Path(path_part).expanduser()
+        if path.is_absolute() and path.is_relative_to(project_root):
+            rel_path = path.relative_to(project_root).as_posix()
+            return f"{rel_path}:{line_part}"
+    except (ValueError, RuntimeError):
+        pass
+
+    return location
 
 
 def _run_file_audit(
