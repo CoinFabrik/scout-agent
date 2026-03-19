@@ -14,6 +14,7 @@ MODEL_ENV_VAR: Final[str] = "SCOUT_MODEL"
 DEFAULT_MAX_PARALLEL_FILES: Final[int] = 4
 MAX_MAX_PARALLEL_FILES: Final[int] = 100
 DEFAULT_AGENT_READ_LIMIT: Final[int] = 15
+DEFAULT_AGENT_GREP_LIMIT: Final[int] = 15
 
 
 def resolve_project_root(raw_path: str) -> Path:
@@ -129,6 +130,21 @@ def resolve_agent_read_limit(
 
     if candidate < 0:
         raise ValueError(f"agent_read_limit must be >= 0; got {candidate}")
+
+    return candidate
+
+
+def resolve_agent_grep_limit(
+    cli_value: int | None,
+    *,
+    fallback: int | None = None,
+) -> int:
+    candidate = cli_value if cli_value is not None else fallback
+    if candidate is None:
+        candidate = DEFAULT_AGENT_GREP_LIMIT
+
+    if candidate < 0:
+        raise ValueError(f"agent_grep_limit must be >= 0; got {candidate}")
 
     return candidate
 

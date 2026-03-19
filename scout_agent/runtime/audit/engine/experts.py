@@ -42,6 +42,7 @@ def build_expert_subagents(
     allowed_paths: list[str],
     recursion_limit: int,
     agent_read_limit: int,
+    agent_grep_limit: int,
     extra_prompt: str | None = None,
 ) -> list[CompiledSubAgent]:
     model = build_chat_model(model_name, llm_mode)
@@ -51,6 +52,7 @@ def build_expert_subagents(
         full_prompt = build_expert_system_prompt(
             expert_name=spec.name,
             project_root=project_root,
+            agent_grep_limit=agent_grep_limit,
             extra_prompt=extra_prompt,
         )
 
@@ -64,6 +66,7 @@ def build_expert_subagents(
                 root_dir=project_root,
                 scope_path=project_root,
                 agent_read_limit=agent_read_limit,
+                agent_grep_limit=agent_grep_limit,
             ),
             name=spec.name,
         ).with_config({"recursion_limit": recursion_limit})

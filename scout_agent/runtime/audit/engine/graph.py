@@ -88,6 +88,7 @@ def _make_audit_file_node(
                 allowed_paths=allowed_paths,
                 recursion_limit=runtime.recursion_limit,
                 agent_read_limit=runtime.agent_read_limit,
+                agent_grep_limit=runtime.agent_grep_limit,
                 extra_prompt=runtime.extra_prompt,
             )
             response = run_file_audit(

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 from pathlib import Path
 from threading import Lock
 
@@ -9,6 +11,7 @@ from langchain.tools import tool
 from langchain_core.tools import BaseTool
 
 DEFAULT_AGENT_READ_LIMIT = 15
+DEFAULT_AGENT_GREP_LIMIT = 15
 DEFAULT_SINGLE_READ_LIMIT = 500
 MAX_SINGLE_READ_LIMIT = 500
 
@@ -59,11 +62,76 @@ def _error(code: str, message: str, next_step: str | None = None) -> str:
     return f"Error[{code}]: {message}"
 
 
+def _regex_grep(
+    pattern: str,
+    path: Path,
+    glob: str | None = None,
+) -> list[dict[str, object]] | str:
+    """Perform a regex search using ripgrep with BRE-to-PCRE normalization."""
+    # Normalize common LLM escaping errors (BRE-style \| to PCRE |)
+    # Handle double backslashes which often appear in model outputs
+    normalized = pattern.replace(r"\\|", "|").replace(r"\|", "|")
+    normalized = normalized.replace(r"\\(", "(").replace(r"\(", "(")
+    normalized = normalized.replace(r"\\)", ")").replace(r"\)", ")")
+
+    cmd = [
+        "rg",
+        "--json",
+        "--pcre2",
+        "--no-ignore",
+        "--hidden",
+        "--color",
+        "never",
+        "-e",
+        normalized,
+        path.as_posix(),
+    ]
+    if glob:
+        cmd.insert(1, "--glob")
+        cmd.insert(2, glob)
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except FileNotFoundError:
+        return "Error[RG_NOT_FOUND]: ripgrep (rg) is not installed."
+    except subprocess.TimeoutExpired:
+        return "Error[RG_TIMEOUT]: Grep search timed out after 30s."
+
+    if proc.returncode == 2:
+        # rg return code 2 indicates a regex error
+        return f"Error[INVALID_REGEX]: {proc.stderr.strip()}"
+
+    results: list[dict[str, object]] = []
+    for line in proc.stdout.splitlines():
+        try:
+            data = json.loads(line)
+            if data.get("type") == "match":
+                payload = data.get("data", {})
+                results.append(
+                    {
+                        "path": payload.get("path", {}).get("text"),
+                        "line": payload.get("line_number"),
+                        "text": payload.get("lines", {}).get("text", "").rstrip("\n"),
+                    }
+                )
+        except json.JSONDecodeError:
+            continue
+
+    return results
+
+
 def build_readonly_tools(
     *,
     root_dir: Path,
     scope_path: Path,
     agent_read_limit: int = DEFAULT_AGENT_READ_LIMIT,
+    agent_grep_limit: int = DEFAULT_AGENT_GREP_LIMIT,
     default_grep_path: str | None = None,
 ) -> list[BaseTool]:
     root_dir = root_dir.resolve()
@@ -76,7 +144,7 @@ def build_readonly_tools(
 
     backend = FilesystemBackend(root_dir=root_dir, virtual_mode=False)
     read_policy = _AgentReadPolicy(max_unique_files=agent_read_limit)
-    grep_policy = _AgentGrepPolicy()
+    grep_policy = _AgentGrepPolicy(max_calls=agent_grep_limit)
     policy_guard = _ConsecutivePolicyGuard()
 
     def resolve_in_scope(raw_path: str | None, *, field_name: str) -> Path:
@@ -199,6 +267,7 @@ def build_readonly_tools(
         """Search for a regex pattern inside the allowed scope.
 
         Use this to locate candidate files or matching regions when the relevant file or location is not yet clear.
+        `pattern` must be a valid regular expression (PCRE-compatible). Use `|` for OR, not `\\|`.
         `path` must be an absolute path inside the allowed scope, or omit it to search the default scope.
         Prefer a narrow `path` or `glob` to reduce noise.
         Returns matches and file paths, not full file contents.
@@ -216,9 +285,9 @@ def build_readonly_tools(
                 if reason is not None:
                     return reason
 
-            result = backend.grep_raw(
+            result = _regex_grep(
                 pattern,
-                path=resolved_path.as_posix(),
+                path=resolved_path,
                 glob=glob,
             )
             rendered = result if isinstance(result, str) else str(result)
@@ -314,8 +383,10 @@ class _AgentReadPolicy:
 
 
 class _AgentGrepPolicy:
-    def __init__(self) -> None:
+    def __init__(self, *, max_calls: int) -> None:
+        self.max_calls = max_calls
         self.grep_calls: set[tuple[str, str, str | None]] = set()
+        self.total_calls = 0
         self.lock = Lock()
 
     def check_grep_allowed(
@@ -328,6 +399,14 @@ class _AgentGrepPolicy:
     ) -> str | None:
         normalized_path = path.as_posix()
         call = (pattern, normalized_path, glob)
+
+        if self.max_calls > 0 and self.total_calls >= self.max_calls:
+            policy_guard.record_error("GREP_LIMIT_REACHED")
+            return _error(
+                "GREP_LIMIT_REACHED",
+                f"Grep search budget exhausted ({self.max_calls} calls).",
+                "Choose a file already identified and use `read_file` to perform analysis.",
+            )
 
         if call in self.grep_calls:
             policy_guard.record_error("REPETITIVE_GREP")
@@ -351,3 +430,4 @@ class _AgentGrepPolicy:
     ) -> None:
         normalized_path = path.as_posix()
         self.grep_calls.add((pattern, normalized_path, glob))
+        self.total_calls += 1

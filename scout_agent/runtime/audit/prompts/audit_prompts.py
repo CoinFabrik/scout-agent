@@ -59,7 +59,7 @@ def build_expert_system_prompt(
         "2. All reported finding 'location' fields MUST use relative paths from the project root (e.g., 'src/lib.rs:10').\n\n"
         "Tool constraints:\n"
         "- `read_file` limit: Maximum 500 lines per call. Requests exceeding this will fail.\n"
-        f"- Search budget: You have a total budget of {agent_grep_limit} `grep` calls. Use them selectively to find candidate files, then switch to `read_file` for detailed analysis. If you exceed this budget, your session will be terminated.",
+        f"- `grep` budget: You have a total budget of {agent_grep_limit} `grep` calls (regular expressions supported). Use them selectively to find candidate files, then switch to `read_file` for detailed analysis. If you exceed this budget, your session will be terminated.",
     ]
 
     few_shots = load_optional_prompt_asset(
@@ -99,7 +99,7 @@ def build_parent_system_prompt(
         ).rstrip(),
         "Tool constraints:\n"
         "- `read_file` limit: Maximum 500 lines per call.\n"
-        f"- Search budget: You have a total budget of {agent_grep_limit} `grep` calls per expert session. Manage your workers accordingly.",
+        f"- `grep` budget: You have a total budget of {agent_grep_limit} `grep` calls (regular expressions supported) per expert session. Manage your workers accordingly.",
         facts_block,
     ]
     few_shots = load_optional_prompt_asset(
@@ -144,7 +144,7 @@ def build_execution_path_consistency_system_prompt(
         "2. All reported finding 'location' fields MUST use relative paths from the project root (e.g., 'src/lib.rs:10').\n\n"
         "Tool constraints:\n"
         "- `read_file` limit: Maximum 500 lines per call.\n"
-        f"- Search budget: You have a total budget of {agent_grep_limit} `grep` calls. Use them selectively to find candidate files, then switch to `read_file` for detailed analysis. If you exceed this budget, your session will be terminated.\n\n"
+        f"- `grep` budget: You have a total budget of {agent_grep_limit} `grep` calls (regular expressions supported). Use them selectively to find candidate files, then switch to `read_file` for detailed analysis. If you exceed this budget, your session will be terminated.\n\n"
         "In-scope production Rust files:\n"
         f"{file_list}"
     )

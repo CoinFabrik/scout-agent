@@ -42,6 +42,7 @@ def run_file_audit(
     system_prompt = build_parent_system_prompt(
         current_file=current_file_path.as_posix(),
         current_file_facts=current_file_facts,
+        agent_grep_limit=runtime.agent_grep_limit,
         extra_prompt=runtime.extra_prompt,
     )
     model = build_chat_model(runtime.model_name, runtime.llm_mode)
@@ -57,6 +58,7 @@ def run_file_audit(
             root_dir=runtime.project_root,
             scope_path=current_file_path,
             agent_read_limit=runtime.agent_read_limit,
+            agent_grep_limit=runtime.agent_grep_limit,
             default_grep_path=current_file_path.as_posix(),
         ),
         subagents=expert_subagents,
@@ -110,6 +112,7 @@ def run_execution_path_consistency_audit(
     model = build_chat_model(runtime.model_name, runtime.llm_mode)
     system_prompt = build_execution_path_consistency_system_prompt(
         aggregate_facts_document=runtime.aggregate_facts_document,
+        agent_grep_limit=runtime.agent_grep_limit,
         extra_prompt=runtime.extra_prompt,
     )
 
@@ -124,6 +127,7 @@ def run_execution_path_consistency_audit(
             root_dir=runtime.project_root,
             scope_path=runtime.project_root,
             agent_read_limit=0,
+            agent_grep_limit=runtime.agent_grep_limit,
         ),
         response_format=ProviderStrategy(FileAuditResponse, strict=True),
         name="execution_path_consistency",
