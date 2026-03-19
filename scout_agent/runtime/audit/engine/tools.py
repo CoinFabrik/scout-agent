@@ -13,6 +13,7 @@ from langchain_core.tools import BaseTool
 DEFAULT_AGENT_READ_LIMIT = 15
 DEFAULT_AGENT_GREP_LIMIT = 15
 DEFAULT_SINGLE_READ_LIMIT = 500
+MIN_SINGLE_READ_LIMIT = 100
 MAX_SINGLE_READ_LIMIT = 500
 
 
@@ -183,8 +184,8 @@ def build_readonly_tools(
 
         Use this to inspect the actual contents of a file when you already have a likely relevant path.
         `file_path` must be an absolute path inside the allowed scope.
-        `limit` must be between 1 and 500 lines. Requests exceeding this will be rejected.
-        Prefer reading enough context to answer the question in one pass; for code, around 100 lines or more is often better than many tiny reads.
+        `limit` must be between 100 and 500 lines. Requests below 100 will be automatically increased.
+        Prefer reading enough context to answer the question in one pass.
         Avoid many adjacent or heavily overlapping reads from the same file.
         If you need more context, increase `limit` substantially instead of shifting `offset` by 1.
         Do not repeat the exact same `(file_path, offset, limit)` span.
@@ -197,13 +198,10 @@ def build_readonly_tools(
                 "`offset` must be >= 0.",
                 "Provide a non-negative offset.",
             )
-        if limit < 1:
-            policy_guard.record_error("INVALID_LIMIT")
-            return _error(
-                "INVALID_LIMIT",
-                "`limit` must be >= 1.",
-                "Provide a positive limit.",
-            )
+        
+        if limit < MIN_SINGLE_READ_LIMIT:
+            limit = MIN_SINGLE_READ_LIMIT
+
         if limit > MAX_SINGLE_READ_LIMIT:
             policy_guard.record_error("INVALID_LIMIT")
             return _error(
