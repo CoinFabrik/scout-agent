@@ -60,12 +60,25 @@ def format_audit_file_failed_line(
     return f"Failed: {current_file}: {error_type}: {message}"
 
 
+def format_audit_file_skipped_line(
+    *,
+    index: int,
+    total: int,
+    current_file: str,
+) -> str:
+    return f"Skipped {index}/{total}: {current_file} (already reviewed)"
+
+
 def format_execution_path_consistency_started_line() -> str:
     return "Starting repo-wide execution_path_consistency audit"
 
 
 def format_execution_path_consistency_completed_line() -> str:
     return "Completed repo-wide execution_path_consistency audit"
+
+
+def format_execution_path_consistency_skipped_line() -> str:
+    return "Skipped repo-wide execution_path_consistency audit (already completed)"
 
 
 def format_audit_expert_spawned_line(
@@ -195,11 +208,32 @@ class AuditProgressReporter:
             verified_findings=total_verified_findings,
         )
 
+    def file_skipped(
+        self,
+        *,
+        index: int,
+        total: int,
+        current_file: str,
+    ) -> None:
+        self._emit(
+            format_audit_file_skipped_line(
+                index=index,
+                total=total,
+                current_file=current_file,
+            ),
+            current_file=current_file,
+            reviewed=index,
+            total=total,
+        )
+
     def execution_path_consistency_started(self) -> None:
         self._emit(format_execution_path_consistency_started_line())
 
     def execution_path_consistency_completed(self) -> None:
         self._emit(format_execution_path_consistency_completed_line())
+
+    def execution_path_consistency_skipped(self) -> None:
+        self._emit(format_execution_path_consistency_skipped_line())
 
     def file_completed(
         self,

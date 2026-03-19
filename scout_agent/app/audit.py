@@ -34,6 +34,7 @@ def run_audit_command(args: Namespace, output: ConsoleOutput) -> int:
             extra_prompt=config.extra_prompt,
             initial_state=initialized.initial_state,
             reporter=session.reporter,
+            thread_id=config.thread_id,
         )
         final_state = session.run(lambda: _run_audit_task(context))
     except (FileNotFoundError, ValueError, ProviderError) as exc:

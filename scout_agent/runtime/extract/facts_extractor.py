@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Sequence
 from functools import cache
 from pathlib import Path
@@ -74,8 +72,7 @@ def extract_file_facts_with_llm(
     model = build_chat_model(model_name, llm_mode)
     structured_model = model.with_structured_output(
         FileFactsExtractionResponse,
-        method="json_schema",
-        strict=True,
+        method="function_calling",
     )
     for attempt in build_extraction_retrying():
         with attempt:

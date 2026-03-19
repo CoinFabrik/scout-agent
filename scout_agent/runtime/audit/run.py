@@ -80,6 +80,7 @@ def initialize_audit(
         "files_reviewed": [],
         "execution_path_consistency_completed": False,
         "verified_findings": [],
+        "failures": [],
     }
 
     return InitializedAudit(
