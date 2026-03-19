@@ -39,6 +39,7 @@ def build_expert_system_prompt(
     *,
     expert_name: str,
     project_root: Path,
+    agent_grep_limit: int = 15,
     extra_prompt: str | None = None,
 ) -> str:
     prompt_file = _EXPERT_SYSTEM_PROMPT_FILES.get(expert_name)
@@ -55,8 +56,12 @@ def build_expert_system_prompt(
         f"## Scope\n\nProject root (absolute): {project_root.as_posix()}\n\n"
         "Instructions for paths:\n"
         "1. All tool calls (read_file, grep) MUST use absolute paths starting from the project root above.\n"
-        "2. All reported finding 'location' fields MUST use relative paths from the project root (e.g., 'src/lib.rs:10').",
+        "2. All reported finding 'location' fields MUST use relative paths from the project root (e.g., 'src/lib.rs:10').\n\n"
+        "Tool constraints:\n"
+        "- `read_file` limit: Maximum 500 lines per call. Requests exceeding this will fail.\n"
+        f"- Search budget: You have a total budget of {agent_grep_limit} `grep` calls. Use them selectively to find candidate files, then switch to `read_file` for detailed analysis. If you exceed this budget, your session will be terminated.",
     ]
+
     few_shots = load_optional_prompt_asset(
         _PROMPTS_DIR,
         _EXPERT_FEW_SHOT_FILES.get(expert_name, ""),
@@ -73,6 +78,7 @@ def build_parent_system_prompt(
     *,
     current_file: str,
     current_file_facts: dict[str, FunctionSummary],
+    agent_grep_limit: int = 15,
     extra_prompt: str | None = None,
 ) -> str:
     current_file_fact_text = _format_current_file_facts(current_file_facts)
@@ -91,6 +97,9 @@ def build_parent_system_prompt(
             preserve_trailing_newline=True,
             empty_error_label="Audit prompt",
         ).rstrip(),
+        "Tool constraints:\n"
+        "- `read_file` limit: Maximum 500 lines per call.\n"
+        f"- Search budget: You have a total budget of {agent_grep_limit} `grep` calls per expert session. Manage your workers accordingly.",
         facts_block,
     ]
     few_shots = load_optional_prompt_asset(
@@ -122,6 +131,7 @@ def build_parent_audit_prompt(
 def build_execution_path_consistency_system_prompt(
     *,
     aggregate_facts_document: AggregateFactsDocument,
+    agent_grep_limit: int = 15,
     extra_prompt: str | None = None,
 ) -> str:
     file_list = _format_scope_file_list(sorted(aggregate_facts_document.files))
@@ -132,6 +142,9 @@ def build_execution_path_consistency_system_prompt(
         "Instructions for paths:\n"
         "1. All tool calls (read_file, grep) MUST use absolute paths starting from the project root above.\n"
         "2. All reported finding 'location' fields MUST use relative paths from the project root (e.g., 'src/lib.rs:10').\n\n"
+        "Tool constraints:\n"
+        "- `read_file` limit: Maximum 500 lines per call.\n"
+        f"- Search budget: You have a total budget of {agent_grep_limit} `grep` calls. Use them selectively to find candidate files, then switch to `read_file` for detailed analysis. If you exceed this budget, your session will be terminated.\n\n"
         "In-scope production Rust files:\n"
         f"{file_list}"
     )

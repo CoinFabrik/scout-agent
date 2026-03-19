@@ -9,7 +9,8 @@ from langchain.tools import tool
 from langchain_core.tools import BaseTool
 
 DEFAULT_AGENT_READ_LIMIT = 15
-DEFAULT_SINGLE_READ_LIMIT = 2_000
+DEFAULT_SINGLE_READ_LIMIT = 500
+MAX_SINGLE_READ_LIMIT = 500
 
 
 class PolicyViolationError(Exception):
@@ -114,6 +115,7 @@ def build_readonly_tools(
 
         Use this to inspect the actual contents of a file when you already have a likely relevant path.
         `file_path` must be an absolute path inside the allowed scope.
+        `limit` must be between 1 and 500 lines. Requests exceeding this will be rejected.
         Prefer reading enough context to answer the question in one pass; for code, around 100 lines or more is often better than many tiny reads.
         Avoid many adjacent or heavily overlapping reads from the same file.
         If you need more context, increase `limit` substantially instead of shifting `offset` by 1.
@@ -133,6 +135,13 @@ def build_readonly_tools(
                 "INVALID_LIMIT",
                 "`limit` must be >= 1.",
                 "Provide a positive limit.",
+            )
+        if limit > MAX_SINGLE_READ_LIMIT:
+            policy_guard.record_error("INVALID_LIMIT")
+            return _error(
+                "INVALID_LIMIT",
+                f"`limit` ({limit}) exceeds the maximum allowed of {MAX_SINGLE_READ_LIMIT}.",
+                f"Request a smaller window (<= {MAX_SINGLE_READ_LIMIT}).",
             )
 
         try:
