@@ -68,41 +68,65 @@ def _regex_grep(
     path: Path,
     glob: str | None = None,
 ) -> list[dict[str, object]] | str:
-    """Perform a regex search using ripgrep with BRE-to-PCRE normalization."""
-    # Normalize common LLM escaping errors (BRE-style \| to PCRE |)
-    # Handle double backslashes which often appear in model outputs
-    normalized = pattern.replace(r"\\|", "|").replace(r"\|", "|")
-    normalized = normalized.replace(r"\\(", "(").replace(r"\(", "(")
-    normalized = normalized.replace(r"\\)", ")").replace(r"\)", ")")
+    """Perform a regex search using ripgrep with BRE-to-PCRE normalization and repair."""
 
-    cmd = [
-        "rg",
-        "--json",
-        "--pcre2",
-        "--no-ignore",
-        "--hidden",
-        "--color",
-        "never",
-        "-e",
-        normalized,
-        path.as_posix(),
-    ]
-    if glob:
-        cmd.insert(1, "--glob")
-        cmd.insert(2, glob)
+    def run_rg(p: str) -> subprocess.CompletedProcess[str]:
+        cmd = [
+            "rg",
+            "--json",
+            "--pcre2",
+            "--no-ignore",
+            "--hidden",
+            "--color",
+            "never",
+            "-e",
+            p,
+            path.as_posix(),
+        ]
+        if glob:
+            cmd.insert(1, "--glob")
+            cmd.insert(2, glob)
 
-    try:
-        proc = subprocess.run(
+        return subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             check=False,
             timeout=30,
         )
+
+    # 1. Primary Normalization (Fix common OR mistakes)
+    # Handle double and single backslashes for pipes
+    norm = pattern.replace(r"\\|", "|").replace(r"\|", "|")
+    # Reduce double-escaped parens to single (literal)
+    norm = norm.replace(r"\\(", r"\(").replace(r"\\)", r"\)")
+
+    try:
+        proc = run_rg(norm)
     except FileNotFoundError:
         return "Error[RG_NOT_FOUND]: ripgrep (rg) is not installed."
     except subprocess.TimeoutExpired:
         return "Error[RG_TIMEOUT]: Grep search timed out after 30s."
+
+    # 2. Automatic Repair (Handle unclosed parentheses)
+    if proc.returncode == 2 and "missing closing parenthesis" in proc.stderr.lower():
+        # The agent likely forgot to escape literal parentheses.
+        # We'll try to escape ALL unescaped parentheses and retry.
+        repaired = ""
+        i = 0
+        while i < len(norm):
+            char = norm[i]
+            if char in "()" and (i == 0 or norm[i - 1] != "\\"):
+                repaired += "\\" + char
+            else:
+                repaired += char
+            i += 1
+
+        if repaired != norm:
+            try:
+                proc = run_rg(repaired)
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
 
     if proc.returncode == 2:
         # rg return code 2 indicates a regex error
@@ -125,6 +149,7 @@ def _regex_grep(
             continue
 
     return results
+
 
 
 def build_readonly_tools(
