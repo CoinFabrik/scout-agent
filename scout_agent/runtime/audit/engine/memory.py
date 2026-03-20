@@ -15,7 +15,7 @@ _ALLOWED_MODULES = [
 ]
 
 
-def get_sqlite_saver(db_path: str | Path = "scout_audit_memory.sqlite") -> SqliteSaver:
+def get_sqlite_saver(db_path: str | Path = ".scout-ai/scout_audit_memory.sqlite") -> SqliteSaver:
     """
     Returns a LangGraph SqliteSaver checkpointer for the given *db_path*.
 
@@ -23,9 +23,11 @@ def get_sqlite_saver(db_path: str | Path = "scout_audit_memory.sqlite") -> Sqlit
     so that ``memory.sqlite`` (main graph) and ``.audit_memory.sqlite``
     (per-file agents) are kept separate.
     """
-    resolved_key = str(Path(db_path).resolve())
+    resolved_path = Path(db_path).resolve()
+    resolved_key = str(resolved_path)
 
     if resolved_key not in _savers:
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(resolved_key, check_same_thread=False)
         serde = JsonPlusSerializer(allowed_msgpack_modules=_ALLOWED_MODULES)
         saver = SqliteSaver(conn, serde=serde)

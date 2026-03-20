@@ -44,7 +44,9 @@ def run_file_audit(
     )
     model = build_chat_model(runtime.model_name, runtime.llm_mode)
 
-    checkpointer = get_sqlite_saver(runtime.project_root / ".audit_memory.sqlite")
+    memory_dir = runtime.project_root / ".scout-ai"
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    checkpointer = get_sqlite_saver(memory_dir / ".audit_memory.sqlite")
 
     agent = create_deep_agent(
         model=model,
@@ -101,7 +103,9 @@ def run_execution_path_consistency_audit(
         extra_prompt=runtime.extra_prompt,
     )
 
-    checkpointer = get_sqlite_saver(runtime.project_root / ".audit_memory.sqlite")
+    memory_dir = runtime.project_root / ".scout-ai"
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    checkpointer = get_sqlite_saver(memory_dir / ".audit_memory.sqlite")
 
     agent = create_agent(
         model=model,
