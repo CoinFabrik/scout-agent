@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from pydantic import ConfigDict
-from typing import Literal, TypedDict
+import operator
+from typing import Annotated, Literal, TypedDict
 
-from pydantic import BaseModel
-from pydantic import Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 Severity = Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
@@ -38,8 +37,17 @@ class FileAuditResponse(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
 
 
+class AuditFailure(TypedDict):
+    index: int
+    relative_path: str
+    error_type: str
+    message: str
+
+
 class AuditState(TypedDict):
     files_to_review: list[str]
-    files_reviewed: list[str]
+    files_reviewed: Annotated[list[str], operator.add]
     execution_path_consistency_completed: bool
-    verified_findings: list[Finding]
+    verified_findings: Annotated[list[Finding], operator.add]
+    failures: Annotated[list[AuditFailure], operator.add]
+    retry_generations: Annotated[dict[str, int], operator.or_]

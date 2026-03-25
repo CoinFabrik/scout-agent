@@ -32,6 +32,7 @@ class AuditSettings(ExtractSettings):
     extra_prompt: str | None
     recursion_limit: int
     agent_read_limit: int
+    thread_id: str | None
 
 
 def resolve_extract_settings(args: Namespace) -> ExtractSettings:
@@ -52,6 +53,7 @@ def resolve_audit_config(args: Namespace) -> AuditSettings:
             getattr(args, "agent_read_limit", None),
             fallback=scout_config.agent_read_limit if scout_config else None,
         ),
+        thread_id=getattr(args, "resume", None),
     )
 
 

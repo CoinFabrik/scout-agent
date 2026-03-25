@@ -1,509 +1,362 @@
-from scout_agent.runtime.audit.engine.tools import build_readonly_tools
-from concurrent.futures import (
-    FIRST_COMPLETED,
-    CancelledError,
-    Future,
-    ThreadPoolExecutor,
-    wait,
-)
-from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
+from typing import Any
+import uuid
 
-from deepagents import create_deep_agent
-from langchain.agents import create_agent
-from langchain.agents.structured_output import ProviderStrategy
-from langchain_core.messages import HumanMessage
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph, RunnableConfig
+from langgraph.types import Send
 
-from scout_agent.domain.audit import AuditState, FileAuditResponse, Finding
-from scout_agent.domain.facts import (
-    AggregateFactsDocument,
-    FunctionSummary,
-    facts_file_path,
-    load_facts_document,
+from scout_agent.runtime.audit.engine.context import AuditContext
+from scout_agent.runtime.audit.engine.runners import (
+    run_file_audit,
+    run_execution_path_consistency_audit,
+    _deduplicate_and_relativize,
 )
-from scout_agent.llm.providers import build_chat_model
-from scout_agent.runtime.audit.engine.audit_callbacks import RuntimeProgressHandler
-from scout_agent.runtime.audit.engine.experts import (
-    SUBAGENT_MANIFEST,
-    CompiledSubAgent,
-    build_expert_subagents,
-)
-from scout_agent.runtime.audit.io.reporting import AuditProgressReporter
-from scout_agent.runtime.audit.prompts.audit_prompts import (
-    build_execution_path_consistency_audit_prompt,
-    build_execution_path_consistency_system_prompt,
-    build_parent_audit_prompt,
-    build_parent_system_prompt,
-)
+from scout_agent.domain.audit import AuditFailure, AuditState
+from scout_agent.runtime.audit.engine.experts import build_expert_subagents
+from scout_agent.runtime.audit.engine.memory import get_sqlite_saver
+from scout_agent.runtime.audit.engine.tools import PolicyViolationError
+
+_EPC_RETRY_KEY = "__execution_path_consistency__"
 
 
-@dataclass(frozen=True, slots=True)
-class AuditContext:
-    project_root: Path
-    facts_path: Path
-    report_path: Path
-    aggregate_facts_document: AggregateFactsDocument
-    model_name: str
-    llm_mode: str
-    max_parallel_files: int
-    recursion_limit: int
-    agent_read_limit: int
-    reporter: AuditProgressReporter
-    initial_state: AuditState
-    extra_prompt: str | None = None
+def _dispatch_node(state: AuditState) -> dict:
+    """Pass-through node: entry point before fan-out."""
+    return {}
 
 
-@dataclass(frozen=True, slots=True)
-class FileAuditFailure:
-    index: int
-    relative_path: str
-    error_type: str
-    message: str
+def _fanout_router(state: AuditState) -> list[Send]:
+    """Conditional edge: emit one Send per file, plus one per standalone agent.
 
+    Files already present in ``files_reviewed`` (from a previous checkpoint)
+    are silently skipped so that a resumed audit only processes the remaining
+    files.
+    """
+    already_reviewed: set[str] = set(state.get("files_reviewed") or [])
+    retry_generations = state.get("retry_generations") or {}
+    sends: list[Send] = []
 
-class AuditParallelError(ValueError):
-    def __init__(self, failures: list[FileAuditFailure]) -> None:
-        self.failures = failures
-        super().__init__(self._render_message(failures))
-
-    @staticmethod
-    def _render_message(failures: list[FileAuditFailure]) -> str:
-        lines = [f"audit failed for {len(failures)} file(s):"]
-        for failure in sorted(failures, key=lambda item: item.index):
-            lines.append(
-                f"- {failure.relative_path}: {failure.error_type}: {failure.message}"
+    for index, relative_path in enumerate(state["files_to_review"], start=1):
+        if relative_path in already_reviewed:
+            continue
+        sends.append(
+            Send(
+                "audit_file",
+                {
+                    "index": index,
+                    "relative_path": relative_path,
+                    "generation": retry_generations.get(relative_path, 0),
+                },
             )
-        return "\n".join(lines)
+        )
+
+    if not state.get("execution_path_consistency_completed"):
+        sends.append(
+            Send(
+                "audit_execution_path_consistency",
+                {"generation": retry_generations.get(_EPC_RETRY_KEY, 0)},
+            )
+        )
+
+    return sends
 
 
-@dataclass(frozen=True, slots=True)
-class _AuditTask:
-    index: int
-    relative_path: str
-
-
-@dataclass(frozen=True, slots=True)
-class _CompletedFileAudit:
-    index: int
-    relative_path: str
-    response: FileAuditResponse
-
-
-def run_audit(
-    *,
+def _make_audit_file_node(
     runtime: AuditContext,
-) -> AuditState:
-    state = runtime.initial_state
-    files_to_review = list(state["files_to_review"])
-    total_files = len(files_to_review)
-    allowed_paths = list(files_to_review)
-    finding_keys: set[str] = set()
+    allowed_paths: list[str],
+    total_files: int,
+    outer_thread_id: str,
+):
+    """Factory: returns the audit_file node function with runtime in closure."""
 
-    runtime.reporter.started(
-        project_root=runtime.project_root,
-        total_files=total_files,
-        model_name=runtime.model_name,
-        llm_mode=runtime.llm_mode,
-    )
+    def audit_file_node(task: dict[str, Any]) -> dict[str, Any]:
+        index: int = task["index"]
+        relative_path: str = task["relative_path"]
+        generation: int = task["generation"]
 
-    tasks = [
-        _AuditTask(index=index, relative_path=relative_path)
-        for index, relative_path in enumerate(files_to_review, start=1)
-    ]
-    completed_audits: list[_CompletedFileAudit] = []
-    failures: list[FileAuditFailure] = []
-    completed_count = 0
-    next_task_index = 0
-    stop_submission = False
+        try:
+            runtime.reporter.file_started(
+                index=index,
+                total=total_files,
+                current_file=relative_path,
+            )
+            expert_subagents = build_expert_subagents(
+                model_name=runtime.model_name,
+                llm_mode=runtime.llm_mode,
+                project_root=runtime.project_root,
+                allowed_paths=allowed_paths,
+                recursion_limit=runtime.recursion_limit,
+                agent_read_limit=runtime.agent_read_limit,
+                extra_prompt=runtime.extra_prompt,
+            )
+            response = run_file_audit(
+                runtime=runtime,
+                current_file=relative_path,
+                expert_subagents=expert_subagents,
+                outer_thread_id=outer_thread_id,
+                generation=generation,
+            )
+            findings = _deduplicate_and_relativize(
+                response.findings, runtime.project_root
+            )
+            for finding in findings:
+                runtime.reporter.finding_verified(
+                    total_verified_findings=0,
+                    finding=finding,
+                )
+            runtime.reporter.file_completed(
+                reviewed=index,
+                total=total_files,
+                current_file=relative_path,
+            )
+            return {
+                "files_reviewed": [relative_path],
+                "verified_findings": findings,
+                "failures": [],
+                "retry_generations": {},
+            }
+        except Exception as exc:
+            runtime.reporter.file_failed(
+                current_file=relative_path,
+                error_type=type(exc).__name__,
+                message=str(exc),
+            )
+            failure: AuditFailure = {
+                "index": index,
+                "relative_path": relative_path,
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+            }
+            retry_generation = (
+                {relative_path: generation + 1}
+                if _is_toxic_failure(exc)
+                else {}
+            )
+            return {
+                "failures": [failure],
+                "files_reviewed": [],
+                "verified_findings": [],
+                "retry_generations": retry_generation,
+            }
 
-    with ThreadPoolExecutor(max_workers=runtime.max_parallel_files + 1) as executor:
-        active: dict[Future[_CompletedFileAudit], _AuditTask] = {}
-        runtime.reporter.execution_path_consistency_started()
-        execution_path_consistency_future: Future[FileAuditResponse] | None = (
-            executor.submit(
-                _run_execution_path_consistency_task,
+    return audit_file_node
+
+
+def _make_epc_node(
+    runtime: AuditContext,
+    allowed_paths: list[str],
+    outer_thread_id: str,
+):
+    """Factory: returns the execution path consistency node function with runtime in closure."""
+
+    def epc_node(task: dict[str, Any]) -> dict[str, Any]:
+        generation: int = task["generation"]
+        try:
+            runtime.reporter.execution_path_consistency_started()
+            response = run_execution_path_consistency_audit(
                 runtime=runtime,
                 allowed_paths=allowed_paths,
+                outer_thread_id=outer_thread_id,
+                generation=generation,
             )
-        )
-
-        while (
-            active
-            or next_task_index < len(tasks)
-            or execution_path_consistency_future is not None
-        ):
-            while (
-                not stop_submission
-                and len(active) < runtime.max_parallel_files
-                and next_task_index < len(tasks)
-            ):
-                task = tasks[next_task_index]
-                next_task_index += 1
-                _mark_file_started(runtime=runtime, task=task, total_files=total_files)
-                future = executor.submit(
-                    _run_audit_task,
-                    task=task,
-                    runtime=runtime,
-                    allowed_paths=allowed_paths,
+            findings = _deduplicate_and_relativize(
+                response.findings, runtime.project_root
+            )
+            for finding in findings:
+                runtime.reporter.finding_verified(
+                    total_verified_findings=0,
+                    finding=finding,
                 )
-                active[future] = task
+            runtime.reporter.execution_path_consistency_completed()
+            return {
+                "execution_path_consistency_completed": True,
+                "verified_findings": findings,
+                "files_reviewed": [],
+                "failures": [],
+                "retry_generations": {},
+            }
+        except Exception as exc:
+            runtime.reporter.file_failed(
+                current_file="execution_path_consistency",
+                error_type=type(exc).__name__,
+                message=str(exc),
+            )
+            failure: AuditFailure = {
+                "index": 0,
+                "relative_path": "execution_path_consistency",
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+            }
+            retry_generation = (
+                {_EPC_RETRY_KEY: generation + 1}
+                if _is_toxic_failure(exc)
+                else {}
+            )
+            return {
+                "failures": [failure],
+                "files_reviewed": [],
+                "verified_findings": [],
+                "retry_generations": retry_generation,
+            }
 
-            wait_targets: set[Future[object]] = {future for future in active}
-            if execution_path_consistency_future is not None:
-                wait_targets.add(execution_path_consistency_future)
-
-            if not wait_targets:
-                break
-
-            done, _ = wait(wait_targets, return_when=FIRST_COMPLETED)
-            for future in done:
-                if (
-                    execution_path_consistency_future is not None
-                    and future is execution_path_consistency_future
-                ):
-                    try:
-                        execution_path_consistency_response = future.result()
-                    except CancelledError:
-                        execution_path_consistency_future = None
-                        continue
-                    except Exception as exc:
-                        failures.append(
-                            FileAuditFailure(
-                                index=0,
-                                relative_path="execution_path_consistency",
-                                error_type=type(exc).__name__,
-                                message=str(exc),
-                            )
-                        )
-                        runtime.reporter.file_failed(
-                            current_file="execution_path_consistency",
-                            error_type=type(exc).__name__,
-                            message=str(exc),
-                        )
-                        execution_path_consistency_future = None
-                        continue
-
-                    execution_path_consistency_future = None
-                    _merge_findings(
-                        state=state,
-                        runtime=runtime,
-                        response=execution_path_consistency_response,
-                        finding_keys=finding_keys,
-                    )
-                    state["execution_path_consistency_completed"] = True
-                    runtime.reporter.execution_path_consistency_completed()
-                    continue
-
-                task = active.pop(future)
-                try:
-                    completed_audit = future.result()
-                except CancelledError:
-                    continue
-                except Exception as exc:
-                    failures.append(
-                        FileAuditFailure(
-                            index=task.index,
-                            relative_path=task.relative_path,
-                            error_type=type(exc).__name__,
-                            message=str(exc),
-                        )
-                    )
-                    runtime.reporter.file_failed(
-                        current_file=task.relative_path,
-                        error_type=type(exc).__name__,
-                        message=str(exc),
-                    )
-                    continue
-
-                completed_count += 1
-                completed_audits.append(completed_audit)
-                _merge_completed_audit(
-                    state=state,
-                    runtime=runtime,
-                    completed_audit=completed_audit,
-                    reviewed_count=completed_count,
-                    total_files=total_files,
-                    finding_keys=finding_keys,
-                )
-
-    if failures:
-        raise AuditParallelError(failures)
-
-    state["files_reviewed"] = [
-        completed.relative_path
-        for completed in sorted(completed_audits, key=lambda item: item.index)
-    ]
-    state["files_to_review"] = []
-    return state
+    return epc_node
 
 
-def _mark_file_started(
-    *,
+def _make_collect_node(runtime: AuditContext):
+    """Factory: returns the collect node function with runtime in closure."""
+
+    def collect_node(state: AuditState) -> dict[str, Any]:
+        # Log failures but do NOT raise — let the audit complete with partial results
+        for failure in state["failures"]:
+            runtime.reporter.file_failed(
+                current_file=failure["relative_path"],
+                error_type=failure["error_type"],
+                message=failure["message"],
+            )
+
+        reviewed = set(state["files_reviewed"])
+        return {
+            "files_to_review": [
+                path for path in state["files_to_review"] if path not in reviewed
+            ],
+        }
+
+    return collect_node
+
+
+def build_audit_graph(
     runtime: AuditContext,
-    task: _AuditTask,
-    total_files: int,
-) -> None:
-    runtime.reporter.file_started(
-        index=task.index,
-        total=total_files,
-        current_file=task.relative_path,
+    *,
+    outer_thread_id: str,
+) -> CompiledStateGraph:
+    """Build and compile the audit StateGraph with SQLite checkpointer."""
+    files_to_review = list(runtime.initial_state["files_to_review"])
+    total_files = len(files_to_review)
+
+    builder = StateGraph(AuditState)
+    builder.add_node("dispatch", _dispatch_node)
+    builder.add_node(
+        "audit_file",
+        _make_audit_file_node(runtime, files_to_review, total_files, outer_thread_id),
     )
+    builder.add_node(
+        "audit_execution_path_consistency",
+        _make_epc_node(runtime, files_to_review, outer_thread_id),
+    )
+    builder.add_node("collect", _make_collect_node(runtime))
+
+    builder.add_conditional_edges(
+        "dispatch",
+        _fanout_router,
+        ["audit_file", "audit_execution_path_consistency"],
+    )
+    builder.add_edge("audit_file", "collect")
+    builder.add_edge("audit_execution_path_consistency", "collect")
+    builder.add_edge(START, "dispatch")
+    builder.add_edge("collect", END)
+
+    memory_dir = runtime.project_root / ".scout-ai"
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    checkpointer = get_sqlite_saver(memory_dir / "memory.sqlite")
+    return builder.compile(checkpointer=checkpointer)
 
 
-def _run_audit_task(
-    *,
-    task: _AuditTask,
-    runtime: AuditContext,
-    allowed_paths: list[str],
-) -> _CompletedFileAudit:
-    expert_subagents = build_expert_subagents(
+def _generate_thread_id(project_root: Path) -> str:
+    project_hash = sha256(str(project_root.resolve()).encode()).hexdigest()[:12]
+    run_hash = uuid.uuid4().hex[:8]
+    return f"audit_{project_hash}_{run_hash}"
+
+
+def run_audit(*, runtime: AuditContext) -> AuditState:
+    """Run the audit using a LangGraph StateGraph with parallel fan-out.
+
+    When *thread_id* is provided the function checks for an existing
+    checkpoint.  If one is found the graph is resumed (``invoke(None, ...)``)
+    which replays from the last saved state instead of starting over.
+    Already-reviewed files are reported as skipped before the graph runs.
+    """
+    runtime.reporter.started(
+        project_root=runtime.project_root,
+        total_files=len(runtime.initial_state["files_to_review"]),
         model_name=runtime.model_name,
         llm_mode=runtime.llm_mode,
-        project_root=runtime.project_root,
-        allowed_paths=allowed_paths,
-        recursion_limit=runtime.recursion_limit,
-        agent_read_limit=runtime.agent_read_limit,
-        extra_prompt=runtime.extra_prompt,
     )
-    response = _run_file_audit(
-        runtime=runtime,
-        current_file=task.relative_path,
-        expert_subagents=expert_subagents,
-    )
-    return _CompletedFileAudit(
-        index=task.index,
-        relative_path=task.relative_path,
-        response=response,
-    )
+    thread_id = runtime.thread_id or _generate_thread_id(runtime.project_root)
+    graph = build_audit_graph(runtime, outer_thread_id=thread_id)
+    print(f"Thread ID: {thread_id}")
 
+    run_config: RunnableConfig = {
+        "configurable": {"thread_id": thread_id},
+        "max_concurrency": runtime.max_parallel_files,
+        "recursion_limit": runtime.recursion_limit,
+    }
 
-def _run_execution_path_consistency_task(
-    *,
-    runtime: AuditContext,
-    allowed_paths: list[str],
-) -> FileAuditResponse:
-    return _run_execution_path_consistency_audit(
-        runtime=runtime,
-        allowed_paths=allowed_paths,
-    )
-
-
-def _merge_completed_audit(
-    *,
-    state: AuditState,
-    runtime: AuditContext,
-    completed_audit: _CompletedFileAudit,
-    reviewed_count: int,
-    total_files: int,
-    finding_keys: set[str],
-) -> None:
-    _merge_findings(
-        state=state,
-        runtime=runtime,
-        response=completed_audit.response,
-        finding_keys=finding_keys,
-    )
-
-    runtime.reporter.file_completed(
-        reviewed=reviewed_count,
-        total=total_files,
-        current_file=completed_audit.relative_path,
-    )
-
-
-def _merge_findings(
-    *,
-    state: AuditState,
-    runtime: AuditContext,
-    response: FileAuditResponse,
-    finding_keys: set[str],
-) -> None:
-    for finding in response.findings:
-        finding.location = _relativize_location(
-            finding.location, runtime.project_root
-        )
-        finding_key = _make_finding_key(finding)
-        if finding_key in finding_keys:
-            continue
-        finding_keys.add(finding_key)
-        state["verified_findings"].append(finding)
-        runtime.reporter.finding_verified(
-            total_verified_findings=len(state["verified_findings"]),
-            finding=finding,
-        )
-
-
-def _relativize_location(location: str, project_root: Path) -> str:
-    if ":" not in location:
-        return location
-
-    parts = location.rsplit(":", 1)
-    path_part = parts[0]
-    line_part = parts[1]
-
-    try:
-        path = Path(path_part).expanduser()
-        if path.is_absolute() and path.is_relative_to(project_root):
-            rel_path = path.relative_to(project_root).as_posix()
-            return f"{rel_path}:{line_part}"
-    except (ValueError, RuntimeError):
-        pass
-
-    return location
-
-
-def _run_file_audit(
-    *,
-    runtime: AuditContext,
-    current_file: str,
-    expert_subagents: list[CompiledSubAgent],
-) -> FileAuditResponse:
-    current_file_path = (runtime.project_root / current_file).resolve()
-    current_file_facts = _load_current_file_facts(
-        facts_root=runtime.facts_path,
-        current_file=current_file,
-    )
-
-    system_prompt = build_parent_system_prompt(
-        current_file=current_file_path.as_posix(),
-        current_file_facts=current_file_facts,
-        extra_prompt=runtime.extra_prompt,
-    )
-    model = build_chat_model(runtime.model_name, runtime.llm_mode)
-
-    agent = create_deep_agent(
-        model=model,
-        system_prompt=_escape_prompt_text(system_prompt),
-        tools=build_readonly_tools(
-            root_dir=runtime.project_root,
-            scope_path=current_file_path,
-            agent_read_limit=runtime.agent_read_limit,
-            default_grep_path=current_file_path.as_posix(),
-        ),
-        subagents=expert_subagents,
-        response_format=ProviderStrategy(FileAuditResponse, strict=True),
-        name="scout-agent",
-    )
-
-    callback_handler = RuntimeProgressHandler(
-        reporter=runtime.reporter,
-        expert_names={spec.name for spec in SUBAGENT_MANIFEST},
-        current_file=current_file,
-    )
-
-    result = agent.invoke(
-        {
-            "messages": [
-                HumanMessage(
-                    content=build_parent_audit_prompt(
-                        current_file=current_file_path.as_posix(),
-                        extra_prompt=runtime.extra_prompt,
+    # --- Decide: fresh run vs. resume ---
+    is_resume = False
+    existing_state: AuditState | None = None
+    has_pending_next = False
+    if thread_id is not None:
+        existing = graph.get_state(run_config)
+        if existing is not None and existing.values:
+            is_resume = True
+            existing_state = existing.values
+            has_pending_next = bool(existing.next)
+            prev_reviewed = set(existing_state.get("files_reviewed") or [])
+            all_files = runtime.initial_state["files_to_review"]
+            total_files = len(all_files)
+            for idx, path in enumerate(all_files, start=1):
+                if path in prev_reviewed:
+                    runtime.reporter.file_skipped(
+                        index=idx,
+                        total=total_files,
+                        current_file=path,
                     )
-                )
-            ]
-        },
-        config={
-            "callbacks": [callback_handler],
-            "recursion_limit": runtime.recursion_limit,
-        },
-    )
-    return _parse_structured_audit_response(
-        result=result,
-        actor_name=current_file,
-    )
+            if existing_state.get("execution_path_consistency_completed"):
+                runtime.reporter.execution_path_consistency_skipped()
 
-
-def _run_execution_path_consistency_audit(
-    *,
-    runtime: AuditContext,
-    allowed_paths: list[str],
-) -> FileAuditResponse:
-    model = build_chat_model(runtime.model_name, runtime.llm_mode)
-    system_prompt = build_execution_path_consistency_system_prompt(
-        aggregate_facts_document=runtime.aggregate_facts_document,
-        extra_prompt=runtime.extra_prompt,
-    )
-
-    agent = create_agent(
-        model=model,
-        system_prompt=_escape_prompt_text(system_prompt),
-        tools=build_readonly_tools(
-            root_dir=runtime.project_root,
-            scope_path=runtime.project_root,
-            agent_read_limit=0,
-        ),
-        response_format=ProviderStrategy(FileAuditResponse, strict=True),
-        name="execution_path_consistency",
-    )
-
-    callback_handler = RuntimeProgressHandler(
-        reporter=runtime.reporter,
-        expert_names=set(),
-        current_file="repo",
-        primary_actor_name="execution_path_consistency",
-    )
-
-    result = agent.invoke(
-        {
-            "messages": [
-                HumanMessage(
-                    content=build_execution_path_consistency_audit_prompt(
-                        extra_prompt=runtime.extra_prompt
-                    )
-                )
-            ]
-        },
-        config={
-            "callbacks": [callback_handler],
-            "recursion_limit": runtime.recursion_limit,
-        },
-    )
-    return _parse_structured_audit_response(
-        result=result,
-        actor_name="execution_path_consistency",
-    )
-
-
-def _parse_structured_audit_response(
-    *,
-    result: dict[str, object],
-    actor_name: str,
-) -> FileAuditResponse:
-    structured = result.get("structured_response")
-    if structured is None:
-        raise ValueError(f"Structured response missing for {actor_name}.")
-
-    try:
-        return (
-            structured
-            if isinstance(structured, FileAuditResponse)
-            else FileAuditResponse.model_validate(structured)
+    if is_resume:
+        resume_input = (
+            None
+            if has_pending_next
+            else _build_resume_input(existing_state)
         )
-    except ValueError as exc:
-        raise ValueError(
-            f"Structured response failed validation for {actor_name}: {exc}"
-        ) from exc
+        result = (
+            existing_state
+            if resume_input is None and not has_pending_next and existing_state is not None
+            else graph.invoke(resume_input, config=run_config)
+        )
+    else:
+        result = graph.invoke(runtime.initial_state, config=run_config)
+
+    return result
 
 
-def _make_finding_key(finding: Finding) -> str:
-    return "|".join(
-        [
-            finding.pattern,
-            finding.severity,
-            finding.location,
-            finding.description,
-            finding.evidence,
-        ]
-    )
+def _is_toxic_failure(exc: Exception) -> bool:
+    if isinstance(exc, PolicyViolationError):
+        return True
+
+    error_type = type(exc).__name__
+    if "StructuredOutput" in error_type:
+        return True
+
+    if isinstance(exc, ValueError) and str(exc).startswith("Structured response"):
+        return True
+
+    return False
 
 
-def _escape_prompt_text(prompt_text: str) -> str:
-    return prompt_text.replace("{", "{{").replace("}", "}}")
+def _build_resume_input(state: AuditState | None) -> dict[str, Any] | None:
+    if state is None:
+        return None
 
+    files_to_review = list(state.get("files_to_review") or [])
+    epc_completed = bool(state.get("execution_path_consistency_completed"))
+    if not files_to_review and epc_completed:
+        return None
 
-def _load_current_file_facts(
-    *,
-    facts_root: Path,
-    current_file: str,
-) -> dict[str, FunctionSummary]:
-    return load_facts_document(facts_file_path(facts_root, current_file)).functions
+    return {
+        "files_to_review": files_to_review,
+        "execution_path_consistency_completed": epc_completed,
+        "retry_generations": dict(state.get("retry_generations") or {}),
+    }
