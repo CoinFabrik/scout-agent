@@ -50,3 +50,4 @@ class AuditState(TypedDict):
     execution_path_consistency_completed: bool
     verified_findings: Annotated[list[Finding], operator.add]
     failures: Annotated[list[AuditFailure], operator.add]
+    retry_generations: Annotated[dict[str, int], operator.or_]

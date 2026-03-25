@@ -68,6 +68,10 @@ def resolve_model_identifier(model_name: str) -> str:
     return f"{match.provider.name}:{match.model_name}"
 
 
+def is_gemini_model(model_name: str) -> bool:
+    return infer_provider(model_name).provider.name == "gemini"
+
+
 def get_api_key(
     provider: Provider,
     env: Mapping[str, str] | None = None,

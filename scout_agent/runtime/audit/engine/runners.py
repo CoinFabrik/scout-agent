@@ -30,6 +30,8 @@ def run_file_audit(
     runtime: AuditContext,
     current_file: str,
     expert_subagents: list[CompiledSubAgent],
+    outer_thread_id: str,
+    generation: int,
 ) -> FileAuditResponse:
     current_file_path = (runtime.project_root / current_file).resolve()
     current_file_facts = _load_current_file_facts(
@@ -83,7 +85,13 @@ def run_file_audit(
         config={
             "callbacks": [callback_handler],
             "recursion_limit": runtime.recursion_limit,
-            "configurable": {"thread_id": current_file},
+            "configurable": {
+                "thread_id": _build_file_thread_id(
+                    outer_thread_id=outer_thread_id,
+                    current_file=current_file,
+                    generation=generation,
+                )
+            },
         },
     )
     return _parse_structured_audit_response(
@@ -96,6 +104,8 @@ def run_execution_path_consistency_audit(
     *,
     runtime: AuditContext,
     allowed_paths: list[str],
+    outer_thread_id: str,
+    generation: int,
 ) -> FileAuditResponse:
     model = build_chat_model(runtime.model_name, runtime.llm_mode)
     system_prompt = build_execution_path_consistency_system_prompt(
@@ -140,7 +150,12 @@ def run_execution_path_consistency_audit(
         config={
             "callbacks": [callback_handler],
             "recursion_limit": runtime.recursion_limit,
-            "configurable": {"thread_id": "execution_path_consistency"},
+            "configurable": {
+                "thread_id": _build_execution_path_consistency_thread_id(
+                    outer_thread_id=outer_thread_id,
+                    generation=generation,
+                )
+            },
         },
     )
     return _parse_structured_audit_response(
@@ -168,6 +183,23 @@ def _parse_structured_audit_response(
         raise ValueError(
             f"Structured response failed validation for {actor_name}: {exc}"
         ) from exc
+
+
+def _build_file_thread_id(
+    *,
+    outer_thread_id: str,
+    current_file: str,
+    generation: int,
+) -> str:
+    return f"{outer_thread_id}:file:{current_file}:g{generation}"
+
+
+def _build_execution_path_consistency_thread_id(
+    *,
+    outer_thread_id: str,
+    generation: int,
+) -> str:
+    return f"{outer_thread_id}:execution_path_consistency:g{generation}"
 
 
 def _escape_prompt_text(prompt_text: str) -> str:

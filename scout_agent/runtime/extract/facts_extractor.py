@@ -1,3 +1,4 @@
+from typing import Literal
 from collections.abc import Sequence
 from functools import cache
 from pathlib import Path
@@ -10,7 +11,7 @@ from tenacity import Retrying, retry_if_exception_type, stop_after_attempt
 from tenacity.wait import wait_exponential_jitter
 
 from scout_agent.domain.facts import FunctionSummary
-from scout_agent.llm.providers import build_chat_model
+from scout_agent.llm.providers import build_chat_model, is_gemini_model
 from scout_agent.runtime.prompt_loader import load_prompt_asset
 from scout_agent.runtime.source.rust_parser import ParsedRustFile, ParsedRustFunction
 
@@ -72,7 +73,7 @@ def extract_file_facts_with_llm(
     model = build_chat_model(model_name, llm_mode)
     structured_model = model.with_structured_output(
         FileFactsExtractionResponse,
-        method="function_calling",
+        method=_structured_output_method_for_model(model_name),
     )
     for attempt in build_extraction_retrying():
         with attempt:
@@ -152,6 +153,14 @@ def _build_file_facts_extraction_messages(
         SystemMessage(content=_load_extract_facts_system_prompt()),
         HumanMessage(content=user_prompt),
     ]
+
+
+def _structured_output_method_for_model(
+    model_name: str,
+) -> Literal["function_calling", "json_schema"]:
+    if is_gemini_model(model_name):
+        return "json_schema"
+    return "function_calling"
 
 
 def _merge_extracted_file_facts(

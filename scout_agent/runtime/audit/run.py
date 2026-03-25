@@ -81,6 +81,7 @@ def initialize_audit(
         "execution_path_consistency_completed": False,
         "verified_findings": [],
         "failures": [],
+        "retry_generations": {},
     }
 
     return InitializedAudit(

@@ -16,6 +16,9 @@ from scout_agent.runtime.audit.engine.runners import (
 from scout_agent.domain.audit import AuditFailure, AuditState
 from scout_agent.runtime.audit.engine.experts import build_expert_subagents
 from scout_agent.runtime.audit.engine.memory import get_sqlite_saver
+from scout_agent.runtime.audit.engine.tools import PolicyViolationError
+
+_EPC_RETRY_KEY = "__execution_path_consistency__"
 
 
 def _dispatch_node(state: AuditState) -> dict:
@@ -31,17 +34,30 @@ def _fanout_router(state: AuditState) -> list[Send]:
     files.
     """
     already_reviewed: set[str] = set(state.get("files_reviewed") or [])
+    retry_generations = state.get("retry_generations") or {}
     sends: list[Send] = []
 
     for index, relative_path in enumerate(state["files_to_review"], start=1):
         if relative_path in already_reviewed:
             continue
         sends.append(
-            Send("audit_file", {"index": index, "relative_path": relative_path})
+            Send(
+                "audit_file",
+                {
+                    "index": index,
+                    "relative_path": relative_path,
+                    "generation": retry_generations.get(relative_path, 0),
+                },
+            )
         )
 
     if not state.get("execution_path_consistency_completed"):
-        sends.append(Send("audit_execution_path_consistency", {}))
+        sends.append(
+            Send(
+                "audit_execution_path_consistency",
+                {"generation": retry_generations.get(_EPC_RETRY_KEY, 0)},
+            )
+        )
 
     return sends
 
@@ -50,12 +66,14 @@ def _make_audit_file_node(
     runtime: AuditContext,
     allowed_paths: list[str],
     total_files: int,
+    outer_thread_id: str,
 ):
     """Factory: returns the audit_file node function with runtime in closure."""
 
     def audit_file_node(task: dict[str, Any]) -> dict[str, Any]:
         index: int = task["index"]
         relative_path: str = task["relative_path"]
+        generation: int = task["generation"]
 
         try:
             runtime.reporter.file_started(
@@ -76,6 +94,8 @@ def _make_audit_file_node(
                 runtime=runtime,
                 current_file=relative_path,
                 expert_subagents=expert_subagents,
+                outer_thread_id=outer_thread_id,
+                generation=generation,
             )
             findings = _deduplicate_and_relativize(
                 response.findings, runtime.project_root
@@ -94,6 +114,7 @@ def _make_audit_file_node(
                 "files_reviewed": [relative_path],
                 "verified_findings": findings,
                 "failures": [],
+                "retry_generations": {},
             }
         except Exception as exc:
             runtime.reporter.file_failed(
@@ -107,10 +128,16 @@ def _make_audit_file_node(
                 "error_type": type(exc).__name__,
                 "message": str(exc),
             }
+            retry_generation = (
+                {relative_path: generation + 1}
+                if _is_toxic_failure(exc)
+                else {}
+            )
             return {
                 "failures": [failure],
                 "files_reviewed": [],
                 "verified_findings": [],
+                "retry_generations": retry_generation,
             }
 
     return audit_file_node
@@ -119,15 +146,19 @@ def _make_audit_file_node(
 def _make_epc_node(
     runtime: AuditContext,
     allowed_paths: list[str],
+    outer_thread_id: str,
 ):
     """Factory: returns the execution path consistency node function with runtime in closure."""
 
-    def epc_node(_task: dict[str, Any]) -> dict[str, Any]:
+    def epc_node(task: dict[str, Any]) -> dict[str, Any]:
+        generation: int = task["generation"]
         try:
             runtime.reporter.execution_path_consistency_started()
             response = run_execution_path_consistency_audit(
                 runtime=runtime,
                 allowed_paths=allowed_paths,
+                outer_thread_id=outer_thread_id,
+                generation=generation,
             )
             findings = _deduplicate_and_relativize(
                 response.findings, runtime.project_root
@@ -143,6 +174,7 @@ def _make_epc_node(
                 "verified_findings": findings,
                 "files_reviewed": [],
                 "failures": [],
+                "retry_generations": {},
             }
         except Exception as exc:
             runtime.reporter.file_failed(
@@ -156,10 +188,16 @@ def _make_epc_node(
                 "error_type": type(exc).__name__,
                 "message": str(exc),
             }
+            retry_generation = (
+                {_EPC_RETRY_KEY: generation + 1}
+                if _is_toxic_failure(exc)
+                else {}
+            )
             return {
                 "failures": [failure],
                 "files_reviewed": [],
                 "verified_findings": [],
+                "retry_generations": retry_generation,
             }
 
     return epc_node
@@ -177,17 +215,21 @@ def _make_collect_node(runtime: AuditContext):
                 message=failure["message"],
             )
 
-        # verified_findings and files_reviewed are already merged
-        # by the operator.add reducers from the parallel branches.
-        # We only need to clear the review queue.
+        reviewed = set(state["files_reviewed"])
         return {
-            "files_to_review": [],
+            "files_to_review": [
+                path for path in state["files_to_review"] if path not in reviewed
+            ],
         }
 
     return collect_node
 
 
-def build_audit_graph(runtime: AuditContext) -> CompiledStateGraph:
+def build_audit_graph(
+    runtime: AuditContext,
+    *,
+    outer_thread_id: str,
+) -> CompiledStateGraph:
     """Build and compile the audit StateGraph with SQLite checkpointer."""
     files_to_review = list(runtime.initial_state["files_to_review"])
     total_files = len(files_to_review)
@@ -195,10 +237,12 @@ def build_audit_graph(runtime: AuditContext) -> CompiledStateGraph:
     builder = StateGraph(AuditState)
     builder.add_node("dispatch", _dispatch_node)
     builder.add_node(
-        "audit_file", _make_audit_file_node(runtime, files_to_review, total_files)
+        "audit_file",
+        _make_audit_file_node(runtime, files_to_review, total_files, outer_thread_id),
     )
     builder.add_node(
-        "audit_execution_path_consistency", _make_epc_node(runtime, files_to_review)
+        "audit_execution_path_consistency",
+        _make_epc_node(runtime, files_to_review, outer_thread_id),
     )
     builder.add_node("collect", _make_collect_node(runtime))
 
@@ -238,9 +282,8 @@ def run_audit(*, runtime: AuditContext) -> AuditState:
         model_name=runtime.model_name,
         llm_mode=runtime.llm_mode,
     )
-    graph = build_audit_graph(runtime)
-
     thread_id = runtime.thread_id or _generate_thread_id(runtime.project_root)
+    graph = build_audit_graph(runtime, outer_thread_id=thread_id)
     print(f"Thread ID: {thread_id}")
 
     run_config: RunnableConfig = {
@@ -251,11 +294,15 @@ def run_audit(*, runtime: AuditContext) -> AuditState:
 
     # --- Decide: fresh run vs. resume ---
     is_resume = False
+    existing_state: AuditState | None = None
+    has_pending_next = False
     if thread_id is not None:
         existing = graph.get_state(run_config)
         if existing is not None and existing.values:
             is_resume = True
-            prev_reviewed = set(existing.values.get("files_reviewed") or [])
+            existing_state = existing.values
+            has_pending_next = bool(existing.next)
+            prev_reviewed = set(existing_state.get("files_reviewed") or [])
             all_files = runtime.initial_state["files_to_review"]
             total_files = len(all_files)
             for idx, path in enumerate(all_files, start=1):
@@ -265,12 +312,51 @@ def run_audit(*, runtime: AuditContext) -> AuditState:
                         total=total_files,
                         current_file=path,
                     )
-            if existing.values.get("execution_path_consistency_completed"):
+            if existing_state.get("execution_path_consistency_completed"):
                 runtime.reporter.execution_path_consistency_skipped()
 
     if is_resume:
-        result = graph.invoke(None, config=run_config)
+        resume_input = (
+            None
+            if has_pending_next
+            else _build_resume_input(existing_state)
+        )
+        result = (
+            existing_state
+            if resume_input is None and not has_pending_next and existing_state is not None
+            else graph.invoke(resume_input, config=run_config)
+        )
     else:
         result = graph.invoke(runtime.initial_state, config=run_config)
 
     return result
+
+
+def _is_toxic_failure(exc: Exception) -> bool:
+    if isinstance(exc, PolicyViolationError):
+        return True
+
+    error_type = type(exc).__name__
+    if "StructuredOutput" in error_type:
+        return True
+
+    if isinstance(exc, ValueError) and str(exc).startswith("Structured response"):
+        return True
+
+    return False
+
+
+def _build_resume_input(state: AuditState | None) -> dict[str, Any] | None:
+    if state is None:
+        return None
+
+    files_to_review = list(state.get("files_to_review") or [])
+    epc_completed = bool(state.get("execution_path_consistency_completed"))
+    if not files_to_review and epc_completed:
+        return None
+
+    return {
+        "files_to_review": files_to_review,
+        "execution_path_consistency_completed": epc_completed,
+        "retry_generations": dict(state.get("retry_generations") or {}),
+    }
