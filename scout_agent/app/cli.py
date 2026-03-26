@@ -64,6 +64,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum number of unique files each audit agent can read via read_file. Use 0 to disable the file-count cap. Defaults to scout.json agent_read_limit or 15.",
     )
     audit_parser.add_argument(
+        "--agent-grep-limit",
+        type=int,
+        default=None,
+        help="Maximum number of grep calls each audit agent can perform. Use 0 to disable the search budget. Defaults to scout.json agent_grep_limit or 15.",
+    )
+    audit_parser.add_argument(
         "--resume",
         default=None,
         metavar="THREAD_ID",

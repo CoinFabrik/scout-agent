@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 from pathlib import Path
 from threading import Lock
 
@@ -9,7 +11,10 @@ from langchain.tools import tool
 from langchain_core.tools import BaseTool
 
 DEFAULT_AGENT_READ_LIMIT = 15
-DEFAULT_SINGLE_READ_LIMIT = 2_000
+DEFAULT_AGENT_GREP_LIMIT = 15
+DEFAULT_SINGLE_READ_LIMIT = 500
+MIN_SINGLE_READ_LIMIT = 100
+MAX_SINGLE_READ_LIMIT = 500
 
 
 class PolicyViolationError(Exception):
@@ -58,11 +63,101 @@ def _error(code: str, message: str, next_step: str | None = None) -> str:
     return f"Error[{code}]: {message}"
 
 
+def _regex_grep(
+    pattern: str,
+    path: Path,
+    glob: str | None = None,
+) -> list[dict[str, object]] | str:
+    """Perform a regex search using ripgrep with BRE-to-PCRE normalization and repair."""
+
+    def run_rg(p: str) -> subprocess.CompletedProcess[str]:
+        cmd = [
+            "rg",
+            "--json",
+            "--pcre2",
+            "--no-ignore",
+            "--hidden",
+            "--color",
+            "never",
+            "-e",
+            p,
+            path.as_posix(),
+        ]
+        if glob:
+            cmd.insert(1, "--glob")
+            cmd.insert(2, glob)
+
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+
+    # 1. Primary Normalization (Fix common OR mistakes)
+    # Handle double and single backslashes for pipes
+    norm = pattern.replace(r"\\|", "|").replace(r"\|", "|")
+    # Reduce double-escaped parens to single (literal)
+    norm = norm.replace(r"\\(", r"\(").replace(r"\\)", r"\)")
+
+    try:
+        proc = run_rg(norm)
+    except FileNotFoundError:
+        return "Error[RG_NOT_FOUND]: ripgrep (rg) is not installed."
+    except subprocess.TimeoutExpired:
+        return "Error[RG_TIMEOUT]: Grep search timed out after 30s."
+
+    # 2. Automatic Repair (Handle unclosed parentheses)
+    if proc.returncode == 2 and "missing closing parenthesis" in proc.stderr.lower():
+        # The agent likely forgot to escape literal parentheses.
+        # We'll try to escape ALL unescaped parentheses and retry.
+        repaired = ""
+        i = 0
+        while i < len(norm):
+            char = norm[i]
+            if char in "()" and (i == 0 or norm[i - 1] != "\\"):
+                repaired += "\\" + char
+            else:
+                repaired += char
+            i += 1
+
+        if repaired != norm:
+            try:
+                proc = run_rg(repaired)
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+
+    if proc.returncode == 2:
+        # rg return code 2 indicates a regex error
+        return f"Error[INVALID_REGEX]: {proc.stderr.strip()}"
+
+    results: list[dict[str, object]] = []
+    for line in proc.stdout.splitlines():
+        try:
+            data = json.loads(line)
+            if data.get("type") == "match":
+                payload = data.get("data", {})
+                results.append(
+                    {
+                        "path": payload.get("path", {}).get("text"),
+                        "line": payload.get("line_number"),
+                        "text": payload.get("lines", {}).get("text", "").rstrip("\n"),
+                    }
+                )
+        except json.JSONDecodeError:
+            continue
+
+    return results
+
+
+
 def build_readonly_tools(
     *,
     root_dir: Path,
     scope_path: Path,
     agent_read_limit: int = DEFAULT_AGENT_READ_LIMIT,
+    agent_grep_limit: int = DEFAULT_AGENT_GREP_LIMIT,
     default_grep_path: str | None = None,
 ) -> list[BaseTool]:
     root_dir = root_dir.resolve()
@@ -75,7 +170,7 @@ def build_readonly_tools(
 
     backend = FilesystemBackend(root_dir=root_dir, virtual_mode=False)
     read_policy = _AgentReadPolicy(max_unique_files=agent_read_limit)
-    grep_policy = _AgentGrepPolicy()
+    grep_policy = _AgentGrepPolicy(max_calls=agent_grep_limit)
     policy_guard = _ConsecutivePolicyGuard()
 
     def resolve_in_scope(raw_path: str | None, *, field_name: str) -> Path:
@@ -114,7 +209,8 @@ def build_readonly_tools(
 
         Use this to inspect the actual contents of a file when you already have a likely relevant path.
         `file_path` must be an absolute path inside the allowed scope.
-        Prefer reading enough context to answer the question in one pass; for code, around 100 lines or more is often better than many tiny reads.
+        `limit` must be between 100 and 500 lines. Requests below 100 will be automatically increased.
+        Prefer reading enough context to answer the question in one pass.
         Avoid many adjacent or heavily overlapping reads from the same file.
         If you need more context, increase `limit` substantially instead of shifting `offset` by 1.
         Do not repeat the exact same `(file_path, offset, limit)` span.
@@ -127,12 +223,16 @@ def build_readonly_tools(
                 "`offset` must be >= 0.",
                 "Provide a non-negative offset.",
             )
-        if limit < 1:
+        
+        if limit < MIN_SINGLE_READ_LIMIT:
+            limit = MIN_SINGLE_READ_LIMIT
+
+        if limit > MAX_SINGLE_READ_LIMIT:
             policy_guard.record_error("INVALID_LIMIT")
             return _error(
                 "INVALID_LIMIT",
-                "`limit` must be >= 1.",
-                "Provide a positive limit.",
+                f"`limit` ({limit}) exceeds the maximum allowed of {MAX_SINGLE_READ_LIMIT}.",
+                f"Request a smaller window (<= {MAX_SINGLE_READ_LIMIT}).",
             )
 
         try:
@@ -190,6 +290,7 @@ def build_readonly_tools(
         """Search for a regex pattern inside the allowed scope.
 
         Use this to locate candidate files or matching regions when the relevant file or location is not yet clear.
+        `pattern` must be a valid regular expression (PCRE-compatible). Use `|` for OR, not `\\|`.
         `path` must be an absolute path inside the allowed scope, or omit it to search the default scope.
         Prefer a narrow `path` or `glob` to reduce noise.
         Returns matches and file paths, not full file contents.
@@ -207,9 +308,9 @@ def build_readonly_tools(
                 if reason is not None:
                     return reason
 
-            result = backend.grep_raw(
+            result = _regex_grep(
                 pattern,
-                path=resolved_path.as_posix(),
+                path=resolved_path,
                 glob=glob,
             )
             rendered = result if isinstance(result, str) else str(result)
@@ -305,8 +406,10 @@ class _AgentReadPolicy:
 
 
 class _AgentGrepPolicy:
-    def __init__(self) -> None:
+    def __init__(self, *, max_calls: int) -> None:
+        self.max_calls = max_calls
         self.grep_calls: set[tuple[str, str, str | None]] = set()
+        self.total_calls = 0
         self.lock = Lock()
 
     def check_grep_allowed(
@@ -319,6 +422,14 @@ class _AgentGrepPolicy:
     ) -> str | None:
         normalized_path = path.as_posix()
         call = (pattern, normalized_path, glob)
+
+        if self.max_calls > 0 and self.total_calls >= self.max_calls:
+            policy_guard.record_error("GREP_LIMIT_REACHED")
+            return _error(
+                "GREP_LIMIT_REACHED",
+                f"Grep search budget exhausted ({self.max_calls} calls).",
+                "Choose a file already identified and use `read_file` to perform analysis.",
+            )
 
         if call in self.grep_calls:
             policy_guard.record_error("REPETITIVE_GREP")
@@ -342,3 +453,4 @@ class _AgentGrepPolicy:
     ) -> None:
         normalized_path = path.as_posix()
         self.grep_calls.add((pattern, normalized_path, glob))
+        self.total_calls += 1

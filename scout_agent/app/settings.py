@@ -4,6 +4,7 @@ from pathlib import Path
 from scout_agent.configuration.scout_config import load_default_scout_config
 from scout_agent.configuration.settings import (
     resolve_agent_read_limit,
+    resolve_agent_grep_limit,
     resolve_extra_prompt_text,
     resolve_facts_path,
     resolve_llm_mode,
@@ -34,6 +35,8 @@ class AuditSettings(ExtractSettings):
     agent_read_limit: int
     thread_id: str | None
 
+    agent_grep_limit: int
+
 
 def resolve_extract_settings(args: Namespace) -> ExtractSettings:
     return ExtractSettings(**_resolve_common(args))
@@ -52,6 +55,10 @@ def resolve_audit_config(args: Namespace) -> AuditSettings:
         agent_read_limit=resolve_agent_read_limit(
             getattr(args, "agent_read_limit", None),
             fallback=scout_config.agent_read_limit if scout_config else None,
+        ),
+        agent_grep_limit=resolve_agent_grep_limit(
+            getattr(args, "agent_grep_limit", None),
+            fallback=scout_config.agent_grep_limit if scout_config else None,
         ),
         thread_id=getattr(args, "resume", None),
     )

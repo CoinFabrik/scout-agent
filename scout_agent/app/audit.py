@@ -31,6 +31,7 @@ def run_audit_command(args: Namespace, output: ConsoleOutput) -> int:
             max_parallel_files=config.max_parallel_files,
             recursion_limit=config.recursion_limit,
             agent_read_limit=config.agent_read_limit,
+            agent_grep_limit=config.agent_grep_limit,
             extra_prompt=config.extra_prompt,
             initial_state=initialized.initial_state,
             reporter=session.reporter,

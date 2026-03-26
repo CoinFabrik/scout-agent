@@ -16,6 +16,7 @@ class AuditContext:
     max_parallel_files: int
     recursion_limit: int
     agent_read_limit: int
+    agent_grep_limit: int
     reporter: AuditProgressReporter
     initial_state: AuditState
     extra_prompt: str | None = None

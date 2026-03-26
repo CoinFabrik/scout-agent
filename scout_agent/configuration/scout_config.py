@@ -18,6 +18,7 @@ class ScoutConfig:
     max_parallel_files: int | None = None
     recursion_limit: int | None = None
     agent_read_limit: int | None = None
+    agent_grep_limit: int | None = None
 
 
 def resolve_default_scout_config_path(project_root: Path) -> Path | None:
@@ -61,6 +62,10 @@ def load_scout_config(path: Path) -> ScoutConfig:
         payload.get("agent_read_limit"),
         field_name="agent_read_limit",
     )
+    agent_grep_limit = _optional_positive_int(
+        payload.get("agent_grep_limit"),
+        field_name="agent_grep_limit",
+    )
 
     return ScoutConfig(
         model=model,
@@ -69,6 +74,7 @@ def load_scout_config(path: Path) -> ScoutConfig:
         max_parallel_files=max_parallel_files,
         recursion_limit=recursion_limit,
         agent_read_limit=agent_read_limit,
+        agent_grep_limit=agent_grep_limit,
     )
 
 
