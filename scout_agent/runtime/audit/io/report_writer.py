@@ -16,52 +16,63 @@ SEVERITY_ORDER: Final[dict[str, int]] = {
 }
 
 
-def validate_report_coverage(
-    *,
-    state: AuditState,
-) -> None:
-    if state["files_to_review"]:
-        raise ValueError(
-            "Cannot generate REPORT.md while files_to_review is not empty: "
-            f"{state['files_to_review']}"
-        )
-    if not state["execution_path_consistency_completed"]:
-        raise ValueError(
-            "Cannot generate REPORT.md before execution_path_consistency completes."
-        )
-
-
 def render_report_markdown(
     *,
     aggregate_facts_document: AggregateFactsDocument,
     state: AuditState,
 ) -> str:
-    validate_report_coverage(state=state)
-
     findings = _sorted_findings(state["verified_findings"])
     severity_counts = Counter(finding.severity for finding in findings)
     generated_at_utc = utc_now_iso()
 
+    has_failures = bool(state.get("failures"))
+
     sections = [
         "# Scout-Agent Report",
         "",
-        "## Metadata",
-        f"- Project root: `{aggregate_facts_document.project_root}`",
-        f"- Generated at UTC: `{generated_at_utc}`",
-        f"- Model: `{aggregate_facts_document.model}`",
-        f"- LLM mode: `{aggregate_facts_document.llm_mode}`",
-        f"- execution_path_consistency completed: `{state['execution_path_consistency_completed']}`",
-        "",
-        "## Summary",
-        f"- Files reviewed: {len(state['files_reviewed'])}",
-        f"- Verified findings: {len(findings)}",
-        f"- CRITICAL: {severity_counts.get('CRITICAL', 0)}",
-        f"- HIGH: {severity_counts.get('HIGH', 0)}",
-        f"- MEDIUM: {severity_counts.get('MEDIUM', 0)}",
-        f"- LOW: {severity_counts.get('LOW', 0)}",
-        "",
-        "## Findings",
     ]
+
+    if has_failures:
+        sections.extend(
+            [
+                "## ⚠️ DISCLAIMER: Partial Report",
+                "",
+                "This report is **incomplete** because one or more audit tasks failed. ",
+                "The findings below only represent the successfully audited portion of the project. ",
+                "Please check the **Failures** section for details on what was missed.",
+                "",
+            ]
+        )
+
+    sections.extend(
+        [
+            "## Metadata",
+            f"- Project root: `{aggregate_facts_document.project_root}`",
+            f"- Generated at UTC: `{generated_at_utc}`",
+            f"- Model: `{aggregate_facts_document.model}`",
+            f"- LLM mode: `{aggregate_facts_document.llm_mode}`",
+            f"- execution_path_consistency completed: `{state['execution_path_consistency_completed']}`",
+            "",
+            "## Summary",
+            f"- Files reviewed: {len(state['files_reviewed'])}",
+            f"- Verified findings: {len(findings)}",
+            f"- CRITICAL: {severity_counts.get('CRITICAL', 0)}",
+            f"- HIGH: {severity_counts.get('HIGH', 0)}",
+            f"- MEDIUM: {severity_counts.get('MEDIUM', 0)}",
+            f"- LOW: {severity_counts.get('LOW', 0)}",
+            "",
+        ]
+    )
+
+    if has_failures:
+        sections.append("## Failures")
+        for failure in state["failures"]:
+            sections.append(
+                f"- `{failure['relative_path']}`: {failure['error_type']} - {failure['message']}"
+            )
+        sections.append("")
+
+    sections.append("## Findings")
 
     if not findings:
         sections.extend(
