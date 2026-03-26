@@ -1,0 +1,8 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:25:32Z'
+project_root: /Users/josegarcia/Desktop/reflector-contract
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: oracle/src/types.rs
+content_sha256: f0ab18c153ed80b9b5d8a5b2d7f2d609345ecd66852191b58fc5a9534509305b
+functions: {}

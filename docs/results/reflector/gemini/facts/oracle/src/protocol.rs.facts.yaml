@@ -1,0 +1,23 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:25:45Z'
+project_root: /Users/josegarcia/Desktop/reflector-contract
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: oracle/src/protocol.rs
+content_sha256: 8fb294d074e5d88f8c81e91e91a2d3b37c156a200e2d567571fc095b33419384
+functions:
+  oracle/src/protocol.rs::get_protocol_version:
+    sentinel_values: Returns 1 as the default protocol version if the storage key
+      is not found.
+  oracle/src/protocol.rs::set_protocol_version: {}
+  oracle/src/protocol.rs::at_latest_protocol_version:
+    time_dependent: Indirectly depends on ledger time by calling schedule_update if
+      not at the latest version.
+    sentinel_values: Checks equality against CURRENT_PROTOCOL (2).
+  oracle/src/protocol.rs::schedule_update:
+    time_dependent: Evaluates if the current ledger timestamp has exceeded the scheduled
+      update timestamp by 1 day to execute the upgrade.
+    sentinel_values: A scheduled_update_ts of 0 indicates no upgrade is currently
+      scheduled and triggers initialization; it is also used to reset the timestamp
+      post-upgrade.
+  oracle/src/protocol.rs::set_protocol_upgrade_timestamp: {}

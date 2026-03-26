@@ -1,0 +1,14 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:25:44Z'
+project_root: /Users/josegarcia/Desktop/reflector-contract
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: oracle/src/events.rs
+content_sha256: a780bfdf172ec6213202df94038b8475c933d9ca7f74318e0f3ee8b2f6b195db
+functions:
+  oracle/src/events.rs::publish_update_event:
+    vector_params: Processes updates and all_assets vectors to map asset symbols to
+      their updated prices.
+    time_dependent: Takes a timestamp parameter to include as a topic in the published
+      event.
+    sentinel_values: Checks for price == 0 to skip zero prices from the updates.

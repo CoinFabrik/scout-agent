@@ -1,0 +1,20 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:25:46Z'
+project_root: /Users/josegarcia/Desktop/reflector-contract
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: oracle/src/timestamps.rs
+content_sha256: 2e48a47ad4683b6edaeb8f06ddca41487dc70505ba32b2f7a6fb7803ba48a6ca
+functions:
+  oracle/src/timestamps.rs::normalize:
+    time_dependent: Normalizes a given timestamp value to the configured timeframe
+      resolution.
+    sentinel_values: Returns 0 if the input value or the timeframe resolution is 0.
+  oracle/src/timestamps.rs::is_valid:
+    time_dependent: Validates whether a given timestamp conforms to the timeframe
+      resolution.
+  oracle/src/timestamps.rs::days_to_milliseconds:
+    time_dependent: Converts a specified number of days into milliseconds.
+  oracle/src/timestamps.rs::ledger_timestamp:
+    time_dependent: Fetches the current ledger timestamp from the environment and
+      converts it to milliseconds.

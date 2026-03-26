@@ -1,0 +1,24 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:25:47Z'
+project_root: /Users/josegarcia/Desktop/reflector-contract
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: oracle/src/mapping.rs
+content_sha256: 793f1a17a8eeaddc0f0950790ecf846584a201b1186ca72bc18f9a16dc146ab3
+functions:
+  oracle/src/mapping.rs::update_history_mask:
+    vector_params: Iterates through the 'updates' vector to process price records
+      by asset index.
+    time_dependent: Shifts the asset bitmask left by 1, automatically evicting records
+      older than 256 periods.
+    sentinel_values: Prices greater than 0 result in the current period bit being
+      set to 1; otherwise, it remains 0.
+  oracle/src/mapping.rs::check_history_updated:
+    time_dependent: Calculates the target bit position based on the given 'period'
+      offset to check historical updates.
+    sentinel_values: Uses unwrap_or_default() to yield 0 if the byte is out of bounds,
+      naturally returning false.
+  oracle/src/mapping.rs::check_period_updated:
+    sentinel_values: Defaults to 0 via unwrap_or_default() if the asset index exceeds
+      the mask size, evaluating to false.
+  oracle/src/mapping.rs::resolve_period_update_mask_position: {}

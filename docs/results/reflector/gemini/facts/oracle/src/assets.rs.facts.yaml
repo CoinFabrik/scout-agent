@@ -1,0 +1,55 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:26:15Z'
+project_root: /Users/josegarcia/Desktop/reflector-contract
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: oracle/src/assets.rs
+content_sha256: 0f59c21fec841bf0d949b77f1d4ad3b6d344a6f4b551e9742c7d92cc2dea384c
+functions:
+  oracle/src/assets.rs::get_expiration_timestamp:
+    time_dependent: Calculates future expiration by adding the provided days to the
+      current ledger timestamp.
+    sentinel_values: Returns 0 if the initial expiration period is 0.
+  oracle/src/assets.rs::load_all_assets:
+    vector_params: Retrieves and returns a Vec of Asset items from storage.
+    sentinel_values: Yields an empty Vec if the assets key is not present in storage.
+  oracle/src/assets.rs::resolve_asset_index:
+    sentinel_values: Returns None if the provided asset cannot be found in storage.
+  oracle/src/assets.rs::resolve_asset_pair_indexes:
+    sentinel_values: Returns None if either the base or quote asset index cannot be
+      resolved.
+  oracle/src/assets.rs::add_assets:
+    vector_params: Iterates through the provided assets Vec to register each, pushing
+      to asset and expiration Vecs.
+    time_dependent: Uses ledger time to derive and store expiration timestamps for
+      new assets.
+    sentinel_values: Panics if an asset already exists or if the total asset count
+      exceeds ASSET_LIMIT.
+  oracle/src/assets.rs::expires:
+    vector_params: Fetches a specific value from the expiration records Vec using
+      the resolved index.
+    time_dependent: Provides the expiration timestamp value corresponding to an asset.
+    sentinel_values: Panics if the asset is missing from storage.
+  oracle/src/assets.rs::init_expiration_config:
+    vector_params: Populates and stores the expiration records Vec based on the length
+      of the assets list.
+    time_dependent: Computes default expiration timestamps derived from current ledger
+      time.
+    sentinel_values: Returns early without making changes if expiration records are
+      already initialized.
+  oracle/src/assets.rs::extend_ttl:
+    authorization: Burns tokens from the sponsor address, delegating authorization
+      enforcement to the token contract.
+    vector_params: Reads and modifies a specific index within the expiration records
+      Vec.
+    time_dependent: Calculates an extension bump based on fee limits and adds it to
+      either the current ledger time or existing expiration.
+    sentinel_values: Panics on invalid amount, missing asset, or invalid config; treats
+      uninitialized/past expirations as current time.
+  oracle/src/assets.rs::load_expiration_records:
+    vector_params: Fetches and returns the stored Vec of u64 expiration records.
+    sentinel_values: Yields an empty Vec if no expiration records are located in storage.
+  oracle/src/assets.rs::set_expirations_records:
+    vector_params: Persists the supplied Vec of u64 expiration timestamps to instance
+      storage.
+  oracle/src/assets.rs::set_asset_index: {}

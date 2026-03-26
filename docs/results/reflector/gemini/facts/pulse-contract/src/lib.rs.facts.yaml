@@ -1,0 +1,75 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:26:16Z'
+project_root: /Users/josegarcia/Desktop/reflector-contract
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: pulse-contract/src/lib.rs
+content_sha256: 6ea79d4a884bbb207707ddc2d2e7b68198f9933ff0bcbae8bd64d0115a62ec67
+functions:
+  pulse-contract/src/lib.rs::PulseOracleContract::base: {}
+  pulse-contract/src/lib.rs::PulseOracleContract::decimals: {}
+  pulse-contract/src/lib.rs::PulseOracleContract::resolution:
+    time_dependent: Returns default tick period timeframe in seconds
+  pulse-contract/src/lib.rs::PulseOracleContract::history_retention_period:
+    time_dependent: Returns historical records retention period in seconds
+  pulse-contract/src/lib.rs::PulseOracleContract::cache_size: {}
+  pulse-contract/src/lib.rs::PulseOracleContract::assets:
+    vector_params: Returns a vector of all quoted assets
+  pulse-contract/src/lib.rs::PulseOracleContract::last_timestamp:
+    time_dependent: Returns the timestamp of the last recorded price update in seconds
+  pulse-contract/src/lib.rs::PulseOracleContract::version: {}
+  pulse-contract/src/lib.rs::PulseOracleContract::expires:
+    time_dependent: Returns the expiration timestamp date for a given asset
+    sentinel_values: Returns None if the asset is not supported
+  pulse-contract/src/lib.rs::PulseOracleContract::extend_asset_ttl:
+    time_dependent: Extends the asset expiration date by a given amount of tokens
+  pulse-contract/src/lib.rs::PulseOracleContract::fee_config:
+    time_dependent: Returns the daily price feed retainer fee amount
+  pulse-contract/src/lib.rs::PulseOracleContract::admin: {}
+  pulse-contract/src/lib.rs::PulseOracleContract::price:
+    time_dependent: Queries the price record for an asset at a specific timestamp
+      in seconds
+    sentinel_values: Returns None if the price record is not found for the given timestamp
+  pulse-contract/src/lib.rs::PulseOracleContract::lastprice:
+    time_dependent: Returns the most recent price update for an asset
+    sentinel_values: Returns None if the asset is not supported
+  pulse-contract/src/lib.rs::PulseOracleContract::prices:
+    vector_params: Returns an optional vector of the last N PriceData records
+    time_dependent: Queries the last N recent price records
+    sentinel_values: Returns None if the asset is not supported
+  pulse-contract/src/lib.rs::PulseOracleContract::x_last_price:
+    time_dependent: Returns the most recent cross price record for a pair of assets
+    sentinel_values: Returns None if there were no records found
+  pulse-contract/src/lib.rs::PulseOracleContract::x_price:
+    time_dependent: Returns the cross price for a pair of assets at a specific timestamp
+    sentinel_values: Returns None if there were no records found for the quoted assets
+  pulse-contract/src/lib.rs::PulseOracleContract::x_prices:
+    vector_params: Returns an optional vector of the last N cross PriceData records
+    time_dependent: Queries the last N cross price records
+    sentinel_values: Returns None if there were no records found for quoted assets
+  pulse-contract/src/lib.rs::PulseOracleContract::twap:
+    time_dependent: Returns the time-weighted average price for an asset over N recent
+      records
+    sentinel_values: Returns None if the asset is not supported
+  pulse-contract/src/lib.rs::PulseOracleContract::x_twap:
+    time_dependent: Returns the time-weighted average cross price for an asset pair
+      over N recent records
+    sentinel_values: Returns None if the assets are not supported
+  pulse-contract/src/lib.rs::PulseOracleContract::config:
+    authorization: Requires admin authorization
+  pulse-contract/src/lib.rs::PulseOracleContract::set_cache_size:
+    authorization: Requires admin authorization
+  pulse-contract/src/lib.rs::PulseOracleContract::add_assets:
+    authorization: Requires admin authorization
+    vector_params: Takes a vector of new assets to add to the quoted assets list
+  pulse-contract/src/lib.rs::PulseOracleContract::set_history_retention_period:
+    authorization: Requires admin authorization
+    time_dependent: Sets the history retention period in seconds
+  pulse-contract/src/lib.rs::PulseOracleContract::set_fee_config:
+    authorization: Requires admin authorization
+    time_dependent: Sets the daily price feed retainer fee
+  pulse-contract/src/lib.rs::PulseOracleContract::set_price:
+    authorization: Requires admin authorization
+    time_dependent: Records a new price feed history snapshot at a specific timestamp
+  pulse-contract/src/lib.rs::PulseOracleContract::update_contract:
+    authorization: Requires admin authorization

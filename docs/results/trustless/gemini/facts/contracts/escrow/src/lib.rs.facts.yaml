@@ -1,0 +1,8 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:26:54Z'
+project_root: /Users/josegarcia/Desktop/Trustless-Work-Smart-Escrow
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: contracts/escrow/src/lib.rs
+content_sha256: 879d27a392a41a7c581659102ee9b27778901364e3637cf676f994d0e9fd433c
+functions: {}

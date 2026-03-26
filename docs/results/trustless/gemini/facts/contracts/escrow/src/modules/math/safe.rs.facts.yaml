@@ -1,0 +1,11 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:27:05Z'
+project_root: /Users/josegarcia/Desktop/Trustless-Work-Smart-Escrow
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: contracts/escrow/src/modules/math/safe.rs
+content_sha256: c042aa3d027813ff80cfb7024927fb38c9357a4e20c494756503bde8c7dd7942
+functions:
+  contracts/escrow/src/modules/math/safe.rs::SafeMath::safe_mul_div:
+    sentinel_values: Returns ContractError::Overflow if multiplication overflows,
+      and ContractError::DivisionError if division fails or divisor is zero.

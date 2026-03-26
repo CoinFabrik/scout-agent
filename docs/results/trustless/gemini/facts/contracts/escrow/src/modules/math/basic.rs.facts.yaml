@@ -1,0 +1,12 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:27:07Z'
+project_root: /Users/josegarcia/Desktop/Trustless-Work-Smart-Escrow
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: contracts/escrow/src/modules/math/basic.rs
+content_sha256: bfe539c65df60c8ad6c7de416a728502534731b9b42067e2b0bb127028b3ff9d
+functions:
+  contracts/escrow/src/modules/math/basic.rs::BasicMath::safe_add:
+    sentinel_values: Returns ContractError::Overflow if addition overflows
+  contracts/escrow/src/modules/math/basic.rs::BasicMath::safe_sub:
+    sentinel_values: Returns ContractError::Underflow if subtraction underflows

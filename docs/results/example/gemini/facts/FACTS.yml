@@ -1,0 +1,19 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:40:37Z'
+project_root: /Users/josegarcia/Desktop/scout-agent/benchmark/example_contract
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+files:
+  src/lib.rs:
+    content_sha256: d62026370f681202e4da69b3aa8edc1bd2891ab5db0bcaf691970398b942aa5e
+    functions:
+      src/lib.rs::CommunityTreasury::initialize: {}
+      src/lib.rs::CommunityTreasury::fund_treasury:
+        sentinel_values: 0 is used as a default if the vault is uninitialized.
+      src/lib.rs::CommunityTreasury::distribute_rewards:
+        authorization: Requires authorization from the stored Admin address.
+        vector_params: Iterates over the recipients vector and uses its length to
+          calculate the reward amount.
+        sentinel_values: 0 is used as a default if the vault is uninitialized.
+      src/lib.rs::CommunityTreasury::get_treasury_balance:
+        sentinel_values: 0 is returned as a default if the vault is uninitialized.

@@ -1,0 +1,26 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:26:03Z'
+project_root: /Users/josegarcia/Desktop/reflector-contract
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: beam-contract/src/cost.rs
+content_sha256: 8c64a9f40b79da378a4bd2fb60b47b015e4600ce8cee2d5be9d083044c8db578
+functions:
+  beam-contract/src/cost.rs::set_costs_config:
+    vector_params: Accepts a Vec<u64> representing costs corresponding to different
+      InvocationComplexity variants.
+    sentinel_values: Stores the costs vector under the COST_CONFIG_KEY constant.
+  beam-contract/src/cost.rs::load_costs_config:
+    vector_params: Returns a Vec<u64> representing the stored invocation costs.
+    sentinel_values: Defaults to a specific array of values ([2_000_000, 10_000_000,
+      15_000_000, 20_000_000, 30_000_000]) if the configuration is missing.
+  beam-contract/src/cost.rs::charge_invocation_fee:
+    authorization: Relies on the external token contract to authorize the burning
+      of tokens from the caller's address.
+    sentinel_values: Returns early without burning tokens if the estimated cost is
+      less than or equal to 0.
+  beam-contract/src/cost.rs::estimate_invocation_cost:
+    vector_params: Retrieves costs from the costs vector by casting InvocationComplexity
+      variants to indices.
+    sentinel_values: Returns 0 if FeeConfig is None or base cost is less than 1, and
+      uses SCALE (10_000_000) for scaling the period modifier.

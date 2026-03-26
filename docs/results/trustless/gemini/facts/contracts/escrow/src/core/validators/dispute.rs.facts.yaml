@@ -1,0 +1,17 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:27:01Z'
+project_root: /Users/josegarcia/Desktop/Trustless-Work-Smart-Escrow
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: contracts/escrow/src/core/validators/dispute.rs
+content_sha256: 70209a8062d43faa74e0220fc109d5f952d32942726efa5c6037b63c8372d468
+functions:
+  contracts/escrow/src/core/validators/dispute.rs::validate_dispute_resolution_conditions:
+    authorization: Requires the caller to match the designated dispute resolver in
+      the escrow roles.
+    sentinel_values: Checks that escrow is disputed, funds are not negative, total
+      funds match the current balance, and funds cover commission fees.
+  contracts/escrow/src/core/validators/dispute.rs::validate_dispute_flag_change_conditions:
+    authorization: Requires the signer to be an authorized role (approver, service
+      provider, platform, release signer, dispute resolver, or receiver).
+    sentinel_values: Checks that the escrow is not already in a disputed state.

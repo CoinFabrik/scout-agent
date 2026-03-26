@@ -1,0 +1,19 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:27:04Z'
+project_root: /Users/josegarcia/Desktop/Trustless-Work-Smart-Escrow
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: contracts/escrow/src/core/milestone.rs
+content_sha256: a9c679a47e01b4bd6a9a6ee628fe73b2633c8490c6ed2f9d714ee6a0344fb0d6
+functions:
+  contracts/escrow/src/core/milestone.rs::MilestoneManager::change_milestone_status:
+    authorization: Requires service_provider to authorize the transaction.
+    vector_params: Updates an element within the milestones collection using milestone_index.
+    sentinel_values: Returns ContractError::InvalidMileStoneIndex if the milestone
+      index is out of bounds.
+  contracts/escrow/src/core/milestone.rs::MilestoneManager::change_milestone_approved_flag:
+    authorization: Requires approver to authorize the transaction.
+    vector_params: Retrieves and modifies a specific element in the milestones collection
+      by index.
+    sentinel_values: Returns ContractError::InvalidMileStoneIndex if the specified
+      milestone index is invalid.

@@ -1,0 +1,17 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:25:46Z'
+project_root: /Users/josegarcia/Desktop/reflector-contract
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: oracle/src/auth.rs
+content_sha256: 8d5a4802f745d3aec22a4afa771fce52cdd58528934d93f49269e78090bf4a3b
+functions:
+  oracle/src/auth.rs::get_admin:
+    sentinel_values: Returns an Option<Address> which is None if the admin is not
+      currently set in storage.
+  oracle/src/auth.rs::set_admin: {}
+  oracle/src/auth.rs::panic_if_not_admin:
+    authorization: Enforces authorization by calling require_auth on the stored admin
+      Address.
+    sentinel_values: Panics with Error::Unauthorized if the retrieved admin Option
+      evaluates to None.

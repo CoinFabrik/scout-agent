@@ -1,0 +1,28 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:27:18Z'
+project_root: /Users/josegarcia/Desktop/Trustless-Work-Smart-Escrow
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: contracts/escrow/src/core/validators/escrow.rs
+content_sha256: 7f6cb78c27f163a2024b99d5eb816008f61ec5cbab03abcfcf1e11da6545d07d
+functions:
+  contracts/escrow/src/core/validators/escrow.rs::validate_release_conditions:
+    authorization: Verifies that the provided release_signer matches the escrow.roles.release_signer.
+    vector_params: Iterates over the escrow.milestones vector to ensure it is non-empty
+      and all items are approved.
+    sentinel_values: Checks that the boolean status flags escrow.flags.released and
+      escrow.flags.disputed are not set.
+  contracts/escrow/src/core/validators/escrow.rs::validate_escrow_property_change_conditions:
+    authorization: Verifies that the provided platform_address matches the existing_escrow.roles.platform_address.
+    vector_params: Iterates over existing_escrow.milestones and new_escrow.milestones
+      to ensure no individual milestones are already approved.
+    sentinel_values: Enforces a maximum limit of 10 milestones, zero contract balance,
+      non-zero escrow amount, and enforces false boolean status flags.
+  contracts/escrow/src/core/validators/escrow.rs::validate_initialize_escrow_conditions:
+    vector_params: Iterates over the escrow_properties.milestones vector to verify
+      that no milestone is pre-approved.
+    sentinel_values: Validates the contract is uninitialized, enforces a max platform
+      fee of 9900 bps, non-zero amount, max 10 milestones, and false status flags.
+  contracts/escrow/src/core/validators/escrow.rs::validate_fund_escrow_conditions:
+    sentinel_values: Validates that the funding amount is greater than 0 and verifies
+      equality between stored and expected escrow objects.
