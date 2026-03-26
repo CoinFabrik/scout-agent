@@ -1,0 +1,28 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:14Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: pool/src/pool/config.rs
+content_sha256: c23c463e9244c5cc8f70e6436d7a4f10419409543c148eb27ff2de21341e1ac5
+functions:
+  pool/src/pool/config.rs::execute_initialize:
+    sentinel_values: Hardcodes pool status to 6 upon initialization
+  pool/src/pool/config.rs::execute_update_pool: {}
+  pool/src/pool/config.rs::execute_queue_set_reserve:
+    time_dependent: Calculates an unlock time using the current ledger timestamp and
+      conditionally adds SECONDS_PER_WEEK
+    sentinel_values: Checks if pool status equals 6 to bypass the week-long timelock
+  pool/src/pool/config.rs::execute_cancel_queued_set_reserve: {}
+  pool/src/pool/config.rs::execute_set_reserve:
+    time_dependent: Rejects execution if the queued initialization unlock time is
+      strictly greater than the current ledger timestamp
+  pool/src/pool/config.rs::initialize_reserve:
+    time_dependent: Sets the initial reserve last_time to the current ledger timestamp
+    sentinel_values: Sets base rates to SCALAR_12 and defaults ir_mod to SCALAR_7
+  pool/src/pool/config.rs::require_valid_reserve_metadata:
+    sentinel_values: Enforces boundary limits such as decimals <= 18, util <= 0_9000000,
+      and r_base < 1_0000000
+  pool/src/pool/config.rs::require_valid_pool_config:
+    sentinel_values: Requires max_positions to be between 2 and 2 * MAX_RESERVES and
+      min_collateral to be non-negative

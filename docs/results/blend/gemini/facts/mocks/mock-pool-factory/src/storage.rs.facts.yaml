@@ -1,0 +1,19 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:42Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: mocks/mock-pool-factory/src/storage.rs
+content_sha256: afcc50436175e0c4fbae0cbc4a666cc44b565ae10ea328e6867413dabd830384
+functions:
+  mocks/mock-pool-factory/src/storage.rs::extend_instance:
+    time_dependent: extends instance storage TTL using predefined ledger thresholds
+  mocks/mock-pool-factory/src/storage.rs::get_pool_init_meta:
+    sentinel_values: panics if PoolInitMeta is not found in storage by using unwrap_optimized
+  mocks/mock-pool-factory/src/storage.rs::set_pool_init_meta: {}
+  mocks/mock-pool-factory/src/storage.rs::is_deployed:
+    time_dependent: extends persistent storage TTL for the contract entry if it exists
+    sentinel_values: returns false if the contract key is not found in persistent
+      storage
+  mocks/mock-pool-factory/src/storage.rs::set_deployed:
+    time_dependent: extends persistent storage TTL for the newly set contract entry

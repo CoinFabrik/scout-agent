@@ -1,0 +1,56 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:21Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: test-suites/fuzz/lib.rs
+content_sha256: 1bfe8193a3c730339aa146ba2b5bfd4ec4daca06ce660754f8fcc321765f1c09
+functions:
+  test-suites/fuzz/lib.rs::verify_contract_result:
+    vector_params: Iterates over the last 10 elements of the environment's events
+      vector in reverse.
+    sentinel_values: Specifically checks for ScErrorType::WasmVm and ScErrorCode::InvalidAction
+      to identify panics.
+  test-suites/fuzz/lib.rs::PassTime::run:
+    time_dependent: Jumps the environment timestamp forward by the amount specified
+      in the test struct.
+  test-suites/fuzz/lib.rs::PassTimeAndBlocks::run:
+    time_dependent: Jumps the environment timestamp and sequence number forward based
+      on the test struct amount.
+  test-suites/fuzz/lib.rs::Supply::run:
+    authorization: Authenticates the supply action using the user account located
+      at the specified user index.
+    vector_params: Passes a single-element vector containing the supply Request to
+      the pool's submit function.
+    sentinel_values: Targets the pool at index 0 and uses RequestType::SupplyCollateral.
+  test-suites/fuzz/lib.rs::Withdraw::run:
+    authorization: Authenticates the withdraw action using the user account located
+      at the specified user index.
+    vector_params: Passes a single-element vector containing the withdraw Request
+      to the pool's submit function.
+    sentinel_values: Targets the pool at index 0 and uses RequestType::WithdrawCollateral.
+  test-suites/fuzz/lib.rs::Borrow::run:
+    authorization: Authenticates the borrow action using the user account located
+      at the specified user index.
+    vector_params: Passes a single-element vector containing the borrow Request to
+      the pool's submit function.
+    sentinel_values: Targets the pool at index 0 and uses RequestType::Borrow.
+  test-suites/fuzz/lib.rs::Repay::run:
+    authorization: Authenticates the repay action using the user account located at
+      the specified user index.
+    vector_params: Passes a single-element vector containing the repay Request to
+      the pool's submit function.
+    sentinel_values: Targets the pool at index 0 and uses RequestType::Repay.
+  test-suites/fuzz/lib.rs::ClaimPool::run:
+    authorization: Authenticates the claim action using the user account located at
+      the specified user index.
+    vector_params: Passes a vector populated with specific reserve indices to claim
+      rewards for.
+    sentinel_values: Targets the pool at index 0 and hardcodes reserve indices 0 and
+      3.
+  test-suites/fuzz/lib.rs::ClaimBackstop::run:
+    authorization: Authenticates the backstop claim action using the user account
+      located at the specified user index.
+    vector_params: Passes a single-element vector containing the pool address to the
+      backstop claim function.
+    sentinel_values: Targets the pool at index 0.

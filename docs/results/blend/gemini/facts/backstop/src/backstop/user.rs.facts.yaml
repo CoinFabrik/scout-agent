@@ -1,0 +1,27 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:09Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: backstop/src/backstop/user.rs
+content_sha256: 6bfa489c54e960df098368279de980e8fd2a2d5d3d88d077fe4cb2de142a0311
+functions:
+  backstop/src/backstop/user.rs::UserBalance::env_default:
+    vector_params: Initializes the q4w vector to be empty
+    sentinel_values: Sets the initial shares value to 0
+  backstop/src/backstop/user.rs::UserBalance::add_shares: {}
+  backstop/src/backstop/user.rs::UserBalance::queue_shares_for_withdrawal:
+    vector_params: Pushes a new Q4W entry to the q4w vector and asserts its size does
+      not exceed MAX_Q4W_SIZE
+    time_dependent: Calculates the expiration timestamp using the current ledger timestamp
+      plus Q4W_LOCK_TIME
+  backstop/src/backstop/user.rs::UserBalance::withdraw_shares:
+    vector_params: Iterates by popping elements from the front of the q4w vector and
+      pushes back partially consumed entries to the front
+    time_dependent: Validates that the withdrawal entry expiration timestamp is less
+      than or equal to the current ledger timestamp
+    sentinel_values: Requires left_to_withdraw to reach exactly 0
+  backstop/src/backstop/user.rs::UserBalance::dequeue_shares:
+    vector_params: Iterates by popping elements from the back of the q4w vector and
+      pushes back partially consumed entries to the back
+    sentinel_values: Requires left_to_dequeue to reach exactly 0

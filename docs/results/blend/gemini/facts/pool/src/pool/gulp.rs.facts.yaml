@@ -1,0 +1,11 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:04Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: pool/src/pool/gulp.rs
+content_sha256: 64a325fd01ad263f82d1136ab73d45d730455baf6495fd0dc41d921ba7a60038
+functions:
+  pool/src/pool/gulp.rs::execute_gulp:
+    sentinel_values: Returns 0 if the calculated token balance delta is less than
+      or equal to zero.

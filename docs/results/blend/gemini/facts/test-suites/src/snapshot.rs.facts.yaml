@@ -1,0 +1,11 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:04Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: test-suites/src/snapshot.rs
+content_sha256: 8ecfaa8fb14f97b76e1d25c445bfc4dd60e9b653e8c2b1b7bc1ef23ff814b5c1
+functions:
+  test-suites/src/snapshot.rs::env_from_snapshot:
+    sentinel_values: Uses hardcoded file path './src/mainnet-55261759-snapshot.json'
+      and boolean false for capture_snapshot_at_drop.

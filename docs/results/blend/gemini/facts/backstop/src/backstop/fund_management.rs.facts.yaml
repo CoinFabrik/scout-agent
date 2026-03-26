@@ -1,0 +1,18 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:12Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: backstop/src/backstop/fund_management.rs
+content_sha256: f9542a8ab1672b843dee4687c7cdc2b709e0a200fad336984d71dcc1af87ade4
+functions:
+  backstop/src/backstop/fund_management.rs::execute_draw:
+    authorization: Assumes pool_address is authenticated prior to invocation as noted
+      by documentation
+    sentinel_values: Requires amount to be non-negative and explicitly passes 0 as
+      the shares argument to withdraw
+  backstop/src/backstop/fund_management.rs::execute_donate:
+    authorization: Relies on the underlying token contract to enforce authorization
+      for transfer_from the from address
+    sentinel_values: Requires non-negative amount, panics if from matches pool_address
+      or the contract address, and deposits with 0 shares

@@ -1,0 +1,9 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:06Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: test-suites/src/oracle.rs
+content_sha256: 03dc735ad54763fce732fe6499e504af67d1f224bbc577557b429b389874b2c7
+functions:
+  test-suites/src/oracle.rs::create_mock_oracle: {}

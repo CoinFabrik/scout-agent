@@ -1,0 +1,33 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:16Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: backstop/src/emissions/manager.rs
+content_sha256: 8e6d72f6c80b48e78441cc39c36466c9533d821dfaa727262cc83382e84db36d
+functions:
+  backstop/src/emissions/manager.rs::add_to_reward_zone:
+    vector_params: Loads and modifies reward_zone Vec<Address> from storage
+    sentinel_values: Uses to_remove Option<Address> to optionally swap out a pool
+  backstop/src/emissions/manager.rs::remove_from_reward_zone:
+    vector_params: Loads and modifies reward_zone Vec<Address> from storage
+  backstop/src/emissions/manager.rs::remove_pool:
+    vector_params: Mutates reward_zone Vec<Address> directly
+    time_dependent: Checks if last_distribution is within the last 24 hours of e.ledger().timestamp()
+    sentinel_values: Sets emission index to i128::MAX to disable further emissions
+  backstop/src/emissions/manager.rs::distribute:
+    vector_params: Iterates over reward_zone Vec<Address> fetched from storage
+    time_dependent: Uses e.ledger().timestamp() to calculate new_emissions and enforce
+      a 1-hour minimum delay
+    sentinel_values: Returns 0 if last_distribution is 0 or a reset is needed
+  backstop/src/emissions/manager.rs::gulp_emissions:
+    time_dependent: Uses e.ledger().sequence() to bump the allowance expiration
+    sentinel_values: Returns (0, 0) if no new emissions are available
+  backstop/src/emissions/manager.rs::update_rz_emis_data:
+    sentinel_values: Returns 0 if no emission data exists for the pool
+  backstop/src/emissions/manager.rs::set_rz_emissions:
+    sentinel_values: Returns accrued amount if to_gulp is true, otherwise returns
+      0
+  backstop/src/emissions/manager.rs::set_backstop_emission_eps:
+    time_dependent: Calculates time_since_last_emission and sets expiration to 7 days
+      from e.ledger().timestamp()

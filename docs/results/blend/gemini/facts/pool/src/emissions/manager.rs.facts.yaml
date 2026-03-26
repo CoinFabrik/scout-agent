@@ -1,0 +1,20 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:13Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: pool/src/emissions/manager.rs
+content_sha256: efde40b6771e6cf284f8e2cc3fbec10086b03fbebd349cda1e02dd58f3f8759c
+functions:
+  pool/src/emissions/manager.rs::set_pool_emissions:
+    vector_params: 'res_emission_metadata: Vec<ReserveEmissionMetadata>'
+    sentinel_values: 0 for share validation, 1 for reserve type bound, 2 for key multiplier
+  pool/src/emissions/manager.rs::gulp_emissions: {}
+  pool/src/emissions/manager.rs::do_gulp_emissions:
+    sentinel_values: SCALAR_7 for rounding checks, 0 for initial share, 2 for reserve
+      index calculation
+  pool/src/emissions/manager.rs::update_reserve_emission_eps:
+    time_dependent: Depends heavily on e.ledger().timestamp() for tracking emission
+      expirations and intervals
+    sentinel_values: 0 and 1 for supply match, 7 * 24 * 60 * 60 for 1-week expiration,
+      10 for decimals, SCALAR_7

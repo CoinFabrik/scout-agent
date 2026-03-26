@@ -1,0 +1,17 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:02Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: backstop/src/emissions/claim.rs
+content_sha256: 7dcb194a89abdd3c7b4545ce0a098d8de6f12ab4503e337315cc67cc48de7e5a
+functions:
+  backstop/src/emissions/claim.rs::execute_claim:
+    authorization: Authorizes the current contract to approve BLND token transfers
+      for LP token minting.
+    vector_params: Iterates over `pool_addresses` to aggregate emission claims and
+      distribute the resulting LP tokens.
+    time_dependent: Calculates the approval ledger expiration using the current ledger
+      sequence rounded up to the nearest 100,000.
+    sentinel_values: Panics with `BackstopError::BadRequest` if the `pool_addresses`
+      vector is empty.

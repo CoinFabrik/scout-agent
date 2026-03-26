@@ -1,0 +1,32 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:17Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: pool/src/pool/reserve.rs
+content_sha256: f438c740d7942bb58f155f9dc425437e135b2c6ca0149e726f520a6c7ea10105
+functions:
+  pool/src/pool/reserve.rs::Reserve::load:
+    time_dependent: Checks e.ledger().timestamp() against last_time and updates the
+      timestamp if state changes.
+    sentinel_values: Returns early without updates if b_supply == 0 or cur_util ==
+      0.
+  pool/src/pool/reserve.rs::Reserve::store: {}
+  pool/src/pool/reserve.rs::Reserve::accrue:
+    sentinel_values: Executes state updates only if accrued > 0 and calculates backstop
+      credit if bstop_rate > 0.
+  pool/src/pool/reserve.rs::Reserve::utilization: {}
+  pool/src/pool/reserve.rs::Reserve::require_utilization_below_max: {}
+  pool/src/pool/reserve.rs::Reserve::require_action_allowed:
+    sentinel_values: Checks specific action_type enumerations (Supply, SupplyCollateral,
+      Borrow) to panic if the reserve is disabled.
+  pool/src/pool/reserve.rs::Reserve::total_liabilities: {}
+  pool/src/pool/reserve.rs::Reserve::total_supply: {}
+  pool/src/pool/reserve.rs::Reserve::to_asset_from_d_token: {}
+  pool/src/pool/reserve.rs::Reserve::to_asset_from_b_token: {}
+  pool/src/pool/reserve.rs::Reserve::to_effective_asset_from_d_token: {}
+  pool/src/pool/reserve.rs::Reserve::to_effective_asset_from_b_token: {}
+  pool/src/pool/reserve.rs::Reserve::to_d_token_up: {}
+  pool/src/pool/reserve.rs::Reserve::to_d_token_down: {}
+  pool/src/pool/reserve.rs::Reserve::to_b_token_up: {}
+  pool/src/pool/reserve.rs::Reserve::to_b_token_down: {}

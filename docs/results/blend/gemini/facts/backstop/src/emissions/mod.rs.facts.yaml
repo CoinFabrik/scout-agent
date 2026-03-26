@@ -1,0 +1,8 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:03:51Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: backstop/src/emissions/mod.rs
+content_sha256: 592521291085fb576569da3c7a3315a523dcf5fd975e3e50e6cd3a789044cf4c
+functions: {}

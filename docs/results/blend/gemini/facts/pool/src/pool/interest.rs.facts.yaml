@@ -1,0 +1,13 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:02Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: pool/src/pool/interest.rs
+content_sha256: 194c6e1f0a825c86882e658312dea44d82b6434c3e85eed6d16192505b2d5b54
+functions:
+  pool/src/pool/interest.rs::calc_accrual:
+    time_dependent: Calculates delta time using the ledger timestamp and `last_time`,
+      scaling it to calculate a time weight against `SECONDS_PER_YEAR`.
+    sentinel_values: Uses 0_9500000 (95%) and 0_0500000 (5%) for utilization boundaries,
+      and defines cap limits for rate modifier at 10x and 0.1x of SCALAR_7.

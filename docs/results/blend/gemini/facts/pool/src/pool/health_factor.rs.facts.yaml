@@ -1,0 +1,18 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:42Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: pool/src/pool/health_factor.rs
+content_sha256: 2ab0db16448b282b8253ba973c135c1bba64bd899a2fc80401cc407375a82cc7
+functions:
+  pool/src/pool/health_factor.rs::PositionData::calculate_from_positions:
+    vector_params: Iterates over the reserve list to fetch values from positions.collateral
+      and positions.liabilities arrays.
+    time_dependent: Depends on dynamically fetched oracle asset prices which vary
+      over time.
+  pool/src/pool/health_factor.rs::PositionData::as_health_factor: {}
+  pool/src/pool/health_factor.rs::PositionData::is_hf_over:
+    sentinel_values: Returns true immediately if liability_base is 0.
+  pool/src/pool/health_factor.rs::PositionData::is_hf_under:
+    sentinel_values: Returns false immediately if liability_base is 0.

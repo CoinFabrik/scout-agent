@@ -1,0 +1,20 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:08Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: backstop/src/emissions/distributor.rs
+content_sha256: ac7225d6cc54bab0b39836ccc0d508a048b0af24e0bef098ad3a7a321b3ead9c
+functions:
+  backstop/src/emissions/distributor.rs::update_emissions: {}
+  backstop/src/emissions/distributor.rs::claim_emissions:
+    sentinel_values: Returns 0 if no emission data exists
+  backstop/src/emissions/distributor.rs::update_emission_data:
+    time_dependent: Uses ledger timestamp to determine elapsed time and cap it at
+      the expiration time for emission calculations
+    sentinel_values: Returns None if no backstop emission data exists
+  backstop/src/emissions/distributor.rs::update_user_emissions:
+    sentinel_values: Returns 0 if no claim is requested and no index accrual has occurred
+  backstop/src/emissions/distributor.rs::set_user_emissions:
+    sentinel_values: Returns the accrued amount if to_claim is true, otherwise returns
+      0

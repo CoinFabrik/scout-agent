@@ -1,0 +1,22 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:11Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: backstop/src/events.rs
+content_sha256: 71326fc1ff5346de843b78d867a8401d20552d84856f24ab15fc52bf4a31a999
+functions:
+  backstop/src/events.rs::BackstopEvents::deposit: {}
+  backstop/src/events.rs::BackstopEvents::queue_withdrawal:
+    time_dependent: Takes an expiration timestamp to log the withdrawal request deadline.
+  backstop/src/events.rs::BackstopEvents::dequeue_withdrawal: {}
+  backstop/src/events.rs::BackstopEvents::withdraw: {}
+  backstop/src/events.rs::BackstopEvents::distribute: {}
+  backstop/src/events.rs::BackstopEvents::gulp_emissions: {}
+  backstop/src/events.rs::BackstopEvents::rw_zone_add:
+    sentinel_values: Accepts an Option<Address> for to_remove, allowing an address
+      to be optionally omitted.
+  backstop/src/events.rs::BackstopEvents::rw_zone_remove: {}
+  backstop/src/events.rs::BackstopEvents::claim: {}
+  backstop/src/events.rs::BackstopEvents::draw: {}
+  backstop/src/events.rs::BackstopEvents::donate: {}

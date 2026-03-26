@@ -1,0 +1,26 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:08Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: pool-factory/src/storage.rs
+content_sha256: 5dc339f59cfccf6c877fe318c17fcaa77617fd3ecd43c2fc8be57e61173cb086
+functions:
+  pool-factory/src/storage.rs::extend_instance:
+    time_dependent: Extends storage instance TTL using 30-day threshold and 31-day
+      bump constants
+  pool-factory/src/storage.rs::get_pool_init_meta:
+    sentinel_values: Uses the hardcoded symbol 'PoolMeta' as the instance storage
+      key
+  pool-factory/src/storage.rs::set_pool_init_meta:
+    sentinel_values: Uses the hardcoded symbol 'PoolMeta' as the instance storage
+      key
+  pool-factory/src/storage.rs::is_deployed:
+    time_dependent: Extends persistent storage TTL if the key is found using 100-day
+      threshold and 120-day bump constants
+    sentinel_values: Returns false if the contract deployment record is absent
+  pool-factory/src/storage.rs::set_deployed:
+    time_dependent: Extends persistent storage TTL after setting deployment status
+      using user ledger limits
+    sentinel_values: Stores a true boolean flag in persistent storage to mark the
+      contract ID as deployed

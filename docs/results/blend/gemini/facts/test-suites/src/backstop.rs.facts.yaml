@@ -1,0 +1,13 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:04Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: test-suites/src/backstop.rs
+content_sha256: fb037a0fa204d7e0ac37c97f66b846f4a12b2ae86dfe58c1f90dc489f6ed94f7
+functions:
+  test-suites/src/backstop.rs::create_backstop:
+    vector_params: Takes a drop_list vector containing Address and i128 pairs for
+      initialization.
+    sentinel_values: The wasm boolean flag toggles between deploying optimized WASM
+      or the native Rust contract.

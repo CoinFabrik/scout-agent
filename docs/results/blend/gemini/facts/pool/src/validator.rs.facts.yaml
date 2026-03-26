@@ -1,0 +1,10 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:02Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: pool/src/validator.rs
+content_sha256: 5cddca0e715af532a3946816ca8c8189d2ddd65edac8c43547eac35d0420f44a
+functions:
+  pool/src/validator.rs::require_nonnegative:
+    sentinel_values: Panics if the amount parameter is negative

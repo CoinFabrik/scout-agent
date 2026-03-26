@@ -1,0 +1,11 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:05Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: test-suites/fuzz/fuzz_targets/fuzz_pool_general.rs
+content_sha256: a8b3d48745dc9f3309b1d5a31068c3b07d41e88cab76f0b4c45e2664f1a8c2e3
+functions:
+  test-suites/fuzz/fuzz_targets/fuzz_pool_general.rs::Command::run: {}
+  test-suites/fuzz/fuzz_targets/fuzz_pool_general.rs::TestFixture<'_>::assert_invariants: {}
+  test-suites/fuzz/fuzz_targets/fuzz_pool_general.rs::TestFixture<'_>::assert_user_invariants: {}

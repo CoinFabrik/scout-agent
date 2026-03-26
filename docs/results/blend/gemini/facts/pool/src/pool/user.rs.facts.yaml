@@ -1,0 +1,47 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T18:04:29Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+path: pool/src/pool/user.rs
+content_sha256: 9564b5df93ce7d9891b2e75f78763244bdd9cb4273e91354e1ba565c36714b34
+functions:
+  pool/src/pool/user.rs::Positions::env_default: {}
+  pool/src/pool/user.rs::Positions::effective_count: {}
+  pool/src/pool/user.rs::User::load: {}
+  pool/src/pool/user.rs::User::store: {}
+  pool/src/pool/user.rs::User::has_liabilities: {}
+  pool/src/pool/user.rs::User::get_liabilities:
+    sentinel_values: Returns 0 if the liability position is not found
+  pool/src/pool/user.rs::User::add_liabilities:
+    sentinel_values: Panics with InvalidDTokenMintAmount if amount <= 0
+  pool/src/pool/user.rs::User::remove_liabilities:
+    sentinel_values: Panics with InvalidDTokenBurnAmount if amount <= 0; removes the
+      liability map key if the new balance reaches 0
+  pool/src/pool/user.rs::User::default_liabilities:
+    sentinel_values: Prevents b_rate from dropping below 0
+  pool/src/pool/user.rs::User::get_collateral:
+    sentinel_values: Returns 0 if the collateral position is not found
+  pool/src/pool/user.rs::User::add_collateral:
+    sentinel_values: Panics with InvalidBTokenMintAmount if amount <= 0
+  pool/src/pool/user.rs::User::remove_collateral:
+    sentinel_values: Panics with InvalidBTokenBurnAmount if amount <= 0; removes the
+      collateral map key if the new balance reaches 0
+  pool/src/pool/user.rs::User::get_supply:
+    sentinel_values: Returns 0 if the uncollateralized supply position is not found
+  pool/src/pool/user.rs::User::add_supply:
+    sentinel_values: Panics with InvalidBTokenMintAmount if amount <= 0
+  pool/src/pool/user.rs::User::remove_supply:
+    sentinel_values: Panics with InvalidBTokenBurnAmount if amount <= 0; removes the
+      supply map key if the new balance reaches 0
+  pool/src/pool/user.rs::User::get_total_supply: {}
+  pool/src/pool/user.rs::User::rm_positions:
+    vector_params: Iterates over collateral_amounts and liability_amounts maps to
+      remove balances for corresponding reserve assets
+    sentinel_values: Ignores any map entries with amount <= 0
+  pool/src/pool/user.rs::User::add_positions:
+    vector_params: Iterates over collateral_amounts and liability_amounts maps to
+      add balances for corresponding reserve assets
+    sentinel_values: Ignores any map entries with amount <= 0
+  pool/src/pool/user.rs::User::update_d_emissions: {}
+  pool/src/pool/user.rs::User::update_b_emissions: {}
