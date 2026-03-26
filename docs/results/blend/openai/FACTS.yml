@@ -1,0 +1,2348 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T20:20:50Z'
+project_root: /Users/josegarcia/Desktop/2025-02-blend/blend-contracts-v2
+model: openai:gpt-5.4
+llm_mode: creative
+files:
+  backstop/src/backstop/deposit.rs:
+    content_sha256: 24881faba1f708d45114abe3784266b05b0776c474c26f3f3af8f40f9d505a19
+    functions:
+      backstop/src/backstop/deposit.rs::execute_deposit:
+        authorization: No caller auth check; rejects when from equals pool_address
+          or current contract, and requires pool_address to be validated via require_is_from_pool_factory
+          using existing pool shares.
+        time_dependent: No explicit time or ledger-sequence dependent logic; only
+          updates emissions before transfer/deposit.
+        sentinel_values: amount must be nonnegative; panics if from==pool_address
+          or contract address, and if computed to_mint <= 0.
+  backstop/src/backstop/fund_management.rs:
+    content_sha256: f9542a8ab1672b843dee4687c7cdc2b709e0a200fad336984d71dcc1af87ade4
+    functions:
+      backstop/src/backstop/fund_management.rs::execute_draw:
+        authorization: Caller must have authenticated pool_address before invocation;
+          no internal auth check beyond that.
+        time_dependent: No time-dependent logic.
+        sentinel_values: Rejects negative amount via require_nonnegative; uses 0 as
+          secondary argument to withdraw.
+      backstop/src/backstop/fund_management.rs::execute_donate:
+        authorization: No explicit auth on caller; requires from is neither pool_address
+          nor current contract, and pool must be validated via require_is_from_pool_factory
+          using pool_balance.shares.
+        time_dependent: No time-dependent logic.
+        sentinel_values: Rejects negative amount; panics with BackstopError::BadRequest
+          if from equals pool_address or current contract; uses 0 as secondary argument
+          to deposit.
+  backstop/src/backstop/mod.rs:
+    content_sha256: d4185b3237910039a03b27d49e6d32a0916729078dc2725cac741f9a04bc256c
+    functions: {}
+  backstop/src/backstop/pool.rs:
+    content_sha256: 663b12ebde3d878653dfd4c2fcce72ce3d957cda027544890e3d7998f54d253c
+    functions:
+      backstop/src/backstop/pool.rs::load_pool_backstop_data:
+        sentinel_values: q4w_pct set to 0 when shares==0; returns tokens/blnd/usdc
+          as 0 when pool_balance.tokens<=0
+      backstop/src/backstop/pool.rs::require_is_from_pool_factory:
+        authorization: verifies address is a pool via PoolFactoryClient.is_pool only
+          when balance==0; otherwise skips check; panics NotPool on failure
+        sentinel_values: balance==0 triggers factory verification; nonzero balance
+          treated as already verified
+      backstop/src/backstop/pool.rs::require_pool_above_threshold:
+        sentinel_values: uses fixed threshold_pc=1e25; floors blnd/usdc by dividing
+          by SCALAR_7 and returns whether saturating product >= threshold
+      backstop/src/backstop/pool.rs::PoolBalance::convert_to_shares:
+        sentinel_values: if self.shares==0 returns tokens unchanged; otherwise floor-converts
+          using self.shares/self.tokens ratio
+      backstop/src/backstop/pool.rs::PoolBalance::convert_to_tokens:
+        sentinel_values: if self.shares==0 returns shares unchanged; otherwise floor-converts
+          using self.tokens/self.shares ratio
+      backstop/src/backstop/pool.rs::PoolBalance::non_queued_tokens:
+        sentinel_values: returns self.tokens minus token-equivalent of q4w; no special
+          sentinel branch
+      backstop/src/backstop/pool.rs::PoolBalance::deposit:
+        sentinel_values: no sentinel checks; simply increments tokens and shares by
+          inputs
+      backstop/src/backstop/pool.rs::PoolBalance::withdraw:
+        sentinel_values: panics InsufficientFunds if tokens>self.tokens or shares>self.shares
+          or shares>self.q4w; otherwise decrements tokens, shares, and q4w
+      backstop/src/backstop/pool.rs::PoolBalance::queue_for_withdraw:
+        sentinel_values: no sentinel checks; simply increments q4w by shares
+      backstop/src/backstop/pool.rs::PoolBalance::dequeue_q4w:
+        sentinel_values: panics InsufficientFunds if shares>self.q4w; otherwise decrements
+          q4w
+  backstop/src/backstop/user.rs:
+    content_sha256: 6bfa489c54e960df098368279de980e8fd2a2d5d3d88d077fe4cb2de142a0311
+    functions:
+      backstop/src/backstop/user.rs::UserBalance::env_default:
+        authorization: None; pure constructor-style method with no caller/auth checks.
+        vector_params: Takes no vector parameters; initializes q4w as an empty Vec<Q4W>.
+        time_dependent: No.
+        sentinel_values: Initializes shares to 0 and q4w to empty.
+      backstop/src/backstop/user.rs::UserBalance::add_shares:
+        authorization: None; mutates self without caller/auth checks.
+        vector_params: No vector parameters.
+        time_dependent: No.
+        sentinel_values: No explicit sentinel values; simply adds to_add to shares.
+      backstop/src/backstop/user.rs::UserBalance::queue_shares_for_withdrawal:
+        authorization: None; no caller/auth checks, only balance and queue-size validation.
+        vector_params: No vector parameters; appends a new Q4W entry to self.q4w.
+        time_dependent: Yes; sets Q4W expiration to current ledger timestamp plus
+          Q4W_LOCK_TIME.
+        sentinel_values: Uses MAX_Q4W_SIZE as queue cap; panics on insufficient shares
+          or excessive q4w entries.
+      backstop/src/backstop/user.rs::UserBalance::withdraw_shares:
+        authorization: None; no caller/auth checks, only queued-balance/expiry validation.
+        vector_params: No vector parameters; consumes and possibly rewrites entries
+          from self.q4w front.
+        time_dependent: Yes; each queued entry must have exp <= current ledger timestamp
+          or it panics NotExpired.
+        sentinel_values: Uses left_to_withdraw reaching 0 as completion; panics with
+          NotExpired for locked entries and BalanceError if remaining amount > 0.
+      backstop/src/backstop/user.rs::UserBalance::dequeue_shares:
+        authorization: None; no caller/auth checks, only queued-balance validation.
+        vector_params: No vector parameters; consumes and possibly rewrites entries
+          from self.q4w back.
+        time_dependent: No; ignores Q4W expiration timestamps.
+        sentinel_values: Uses left_to_dequeue reaching 0 as completion; panics with
+          BalanceError if remaining amount > 0.
+  backstop/src/backstop/withdrawal.rs:
+    content_sha256: dfac0992951f46a7b9c9100e83cddbef6c46593f85810744cc21395d44998b60
+    functions:
+      backstop/src/backstop/withdrawal.rs::execute_queue_withdrawal:
+        authorization: No explicit auth check; acts on the provided `from` address
+          by loading and updating that user's balance for `pool_address`.
+        vector_params: No vector-type parameters; returns the last queued-withdrawal
+          entry from `user_balance.q4w`.
+        time_dependent: No direct time/env timestamp logic here; only calls emission
+          updates and queueing logic with `e`.
+        sentinel_values: Rejects negative `amount`; unwraps `user_balance.q4w.last()`
+          so assumes a queued entry exists after queueing.
+      backstop/src/backstop/withdrawal.rs::execute_dequeue_withdrawal:
+        authorization: No explicit auth check; acts on the provided `from` address
+          by loading and updating that user's balance for `pool_address`.
+        vector_params: No vector-type parameters.
+        time_dependent: No direct time/env timestamp logic here; only calls emission
+          updates and dequeue logic with `e`.
+        sentinel_values: Rejects negative `amount`; no other explicit sentinel checks
+          in this function.
+      backstop/src/backstop/withdrawal.rs::execute_withdraw:
+        authorization: No explicit auth check; withdraws for the provided `from` address
+          and transfers tokens from the contract to `from`.
+        vector_params: No vector-type parameters.
+        time_dependent: No direct time-based logic; uses current contract address
+          for token transfer but no timestamp/ledger checks.
+        sentinel_values: Rejects negative `amount`; panics with `InvalidTokenWithdrawAmount`
+          if converted token amount `to_return` equals 0.
+  backstop/src/constants.rs:
+    content_sha256: ea385afff651f913981cea3bc32aa6a6c03d83240dcac515693e1020ee279586
+    functions: {}
+  backstop/src/contract.rs:
+    content_sha256: 85d2ef26e1d7fa3957b35175c2c3d7f737cba61dabb955a4782f0bfd49e38cfc
+    functions:
+      backstop/src/contract.rs::BackstopContract::__constructor:
+        authorization: No auth checks; initializes stored token/factory/emitter addresses
+          and drop list during construction.
+        vector_params: 'drop_list: Vec<(Address, i128)> is iterated to sum allocation
+          amounts, then stored.'
+        time_dependent: Not time-dependent.
+        sentinel_values: Panics with BadRequest if sum(drop_list amounts) + MAX_BACKFILLED_EMISSIONS
+          exceeds 50_000_000 * SCALAR_7.
+      backstop/src/contract.rs::BackstopContract::deposit:
+        authorization: Requires from.require_auth().
+        vector_params: No vector parameters.
+        time_dependent: No direct time dependency in this file.
+        sentinel_values: No explicit sentinel values; delegates amount handling to
+          execute_deposit.
+      backstop/src/contract.rs::BackstopContract::queue_withdrawal:
+        authorization: Requires from.require_auth().
+        vector_params: No vector parameters.
+        time_dependent: Returns Q4W and emits to_queue.exp, so withdrawal queue carries
+          an expiration/timestamp-derived field.
+        sentinel_values: No explicit sentinel values; delegates queue semantics to
+          execute_queue_withdrawal.
+      backstop/src/contract.rs::BackstopContract::dequeue_withdrawal:
+        authorization: Requires from.require_auth().
+        vector_params: No vector parameters.
+        time_dependent: No direct time check here, though it operates on queued withdrawals
+          managed elsewhere.
+        sentinel_values: No explicit sentinel values; delegates dequeue semantics
+          to execute_dequeue_withdrawal.
+      backstop/src/contract.rs::BackstopContract::withdraw:
+        authorization: Requires from.require_auth().
+        vector_params: No vector parameters.
+        time_dependent: No direct time check here, though it withdraws from a prior
+          queue managed elsewhere.
+        sentinel_values: No explicit sentinel values; delegates withdrawal constraints
+          to execute_withdraw.
+      backstop/src/contract.rs::BackstopContract::user_balance:
+        authorization: No auth required.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No explicit sentinel values.
+      backstop/src/contract.rs::BackstopContract::pool_data:
+        authorization: No auth required.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No explicit sentinel values.
+      backstop/src/contract.rs::BackstopContract::backstop_token:
+        authorization: No auth required.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No explicit sentinel values.
+      backstop/src/contract.rs::BackstopContract::distribute:
+        authorization: No auth checks.
+        vector_params: No vector parameters.
+        time_dependent: Likely time-sensitive through emissions::distribute, but no
+          direct timestamp logic appears in this file.
+        sentinel_values: No explicit sentinel values.
+      backstop/src/contract.rs::BackstopContract::gulp_emissions:
+        authorization: Requires pool.require_auth().
+        vector_params: No vector parameters.
+        time_dependent: Emission distribution may depend on prior accrual state, but
+          no direct time read appears here.
+        sentinel_values: No explicit sentinel values; reward-zone validity is delegated
+          to gulp_emissions.
+      backstop/src/contract.rs::BackstopContract::add_reward:
+        authorization: No auth checks in this file.
+        vector_params: No vector parameters; to_remove is Option<Address>, not a vector.
+        time_dependent: Indirectly time-dependent per comments about recent distribution
+          in last 48 hours, but enforced in delegated logic not shown here.
+        sentinel_values: Uses Option<Address> for optional removal target; no other
+          explicit sentinel values.
+      backstop/src/contract.rs::BackstopContract::remove_reward:
+        authorization: No auth checks in this file.
+        vector_params: No vector parameters.
+        time_dependent: No direct time dependency in this file.
+        sentinel_values: No explicit sentinel values; threshold/reward-zone checks
+          are delegated.
+      backstop/src/contract.rs::BackstopContract::claim:
+        authorization: Requires from.require_auth().
+        vector_params: 'pool_addresses: Vec<Address> is passed through to execute_claim
+          to claim across multiple pools.'
+        time_dependent: No direct time dependency in this file.
+        sentinel_values: No explicit sentinel values; invalid pool handling is delegated
+          to execute_claim.
+      backstop/src/contract.rs::BackstopContract::drop:
+        authorization: No auth checks.
+        vector_params: Uses stored drop_list, appends (current_contract_address, backfilled_emissions),
+          and passes the full vector to emitter_client.drop.
+        time_dependent: No direct time dependency.
+        sentinel_values: Appends current contract address paired with stored backfilled_emissions
+          as a special extra drop entry.
+      backstop/src/contract.rs::BackstopContract::draw:
+        authorization: Requires pool_address.require_auth().
+        vector_params: No vector parameters.
+        time_dependent: No direct time dependency in this file.
+        sentinel_values: No explicit sentinel values; insufficient-balance and validity
+          checks are delegated to execute_draw.
+      backstop/src/contract.rs::BackstopContract::donate:
+        authorization: Requires both from.require_auth() and pool_address.require_auth().
+        vector_params: No vector parameters.
+        time_dependent: No direct time dependency in this file.
+        sentinel_values: No explicit sentinel values; validity/allowance checks are
+          delegated to execute_donate.
+      backstop/src/contract.rs::require_nonnegative:
+        authorization: No auth required.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: Negative amounts are rejected by panicking with NegativeAmountError;
+          zero is allowed.
+  backstop/src/dependencies/comet.rs:
+    content_sha256: 4d1e8167c3e320782108e140d858a21641b36b3fe9c416a0b4273a171e87ba45
+    functions: {}
+  backstop/src/dependencies/mod.rs:
+    content_sha256: 7e70e97f4efdcfe122492d02c24ca75fd306e2b5f8ac20f6cc120bbf342813ea
+    functions: {}
+  backstop/src/dependencies/pool_factory.rs:
+    content_sha256: 87fab9f7b285b83e56751f46761d030f0c52f52aa46a631804d16e2f29833143
+    functions: {}
+  backstop/src/emissions/claim.rs:
+    content_sha256: 7dcb194a89abdd3c7b4545ce0a098d8de6f12ab4503e337315cc67cc48de7e5a
+    functions:
+      backstop/src/emissions/claim.rs::execute_claim:
+        authorization: No caller auth check on from/to; if total claimed > 0 the contract
+          authorizes itself to invoke BLND token approve for the current contract,
+          backstop token, claimed amount, and computed approval ledger.
+        vector_params: 'pool_addresses: &Vec<Address>; must be non-empty, iterated
+          twice to compute per-pool claims and then distribute LP deposits proportionally
+          by pool.'
+        time_dependent: Yes; approval_ledger is derived from the current ledger sequence
+          as ((sequence / 100000) + 1) * 100000.
+        sentinel_values: Empty pool_addresses panics with BackstopError::BadRequest;
+          claim/deposit path only runs when claimed > 0; passes &0 as a minimum-output/slippage-style
+          argument to dep_tokn_amt_in_get_lp_tokns_out.
+  backstop/src/emissions/distributor.rs:
+    content_sha256: ac7225d6cc54bab0b39836ccc0d508a048b0af24e0bef098ad3a7a321b3ead9c
+    functions:
+      backstop/src/emissions/distributor.rs::update_emissions:
+        authorization: No explicit authorization; updates emission state for the provided
+          pool and user.
+        time_dependent: Yes; indirectly depends on ledger timestamp through update_rz_emis_data
+          and update_emission_data.
+        sentinel_values: Skips user update if update_emission_data returns None.
+      backstop/src/emissions/distributor.rs::claim_emissions:
+        authorization: No explicit authorization; computes and records claimable emissions
+          for the provided pool and user.
+        time_dependent: Yes; indirectly depends on ledger timestamp through update_rz_emis_data
+          and update_emission_data.
+        sentinel_values: Returns 0 if update_emission_data returns None; passes to_claim=true
+          to zero stored accrued after claim.
+      backstop/src/emissions/distributor.rs::update_emission_data:
+        authorization: No explicit authorization; updates stored backstop emission
+          data for the given pool if present.
+        time_dependent: Yes; uses e.ledger().timestamp(), caps accrual at expiration,
+          and updates last_time.
+        sentinel_values: Returns None if no emission data exists; returns existing
+          data unchanged when last_time>=expiration, timestamp==last_time, eps==0,
+          or pool shares==0; requires nonnegative unqueued_shares.
+      backstop/src/emissions/distributor.rs::update_user_emissions:
+        authorization: No explicit authorization; updates stored user emission index/accrual
+          for the given pool and user.
+        time_dependent: No direct timestamp read; depends on supplied emission index
+          data.
+        sentinel_values: Returns 0 when user index is unchanged and no claim requested;
+          if no prior user data and shares==0 stores zero accrual; to_claim triggers
+          payout amount and reset via set_user_emissions; requires nonnegative delta_index.
+      backstop/src/emissions/distributor.rs::set_user_emissions:
+        authorization: No explicit authorization; writes user emission data for the
+          given pool and user.
+        time_dependent: No.
+        sentinel_values: If to_claim is true, stores accrued=0 and returns prior accrued;
+          otherwise stores accrued and returns 0.
+  backstop/src/emissions/manager.rs:
+    content_sha256: 8e6d72f6c80b48e78441cc39c36466c9533d821dfaa727262cc83382e84db36d
+    functions:
+      backstop/src/emissions/manager.rs::add_to_reward_zone:
+        authorization: No caller auth check; enforces pool not already in reward zone
+          and to_add must satisfy minimum backstop threshold, and if full requires
+          to_remove plus higher token balance than removed pool.
+        vector_params: Uses stored Vec<Address> reward_zone; pushes to_add to front
+          and may remove one address via helper, but takes no vector parameter.
+        time_dependent: No direct time logic, but removal path delegates to remove_pool
+          which requires a distribution within the last 24 hours.
+        sentinel_values: Option<Address> to_remove uses None to signal no swap candidate;
+          initializes new pool emission state with accrued 0 when absent.
+      backstop/src/emissions/manager.rs::remove_from_reward_zone:
+        authorization: No caller auth check; only allows removal when target pool
+          is below minimum backstop threshold, otherwise errors.
+        vector_params: Uses stored Vec<Address> reward_zone and removes the target
+          via helper; no vector argument in signature.
+        time_dependent: Indirectly time-dependent through remove_pool, which rejects
+          removal if last distribution is older than 24 hours.
+        sentinel_values: No explicit sentinel input; helper sets removed pool emission
+          index to i128::MAX as a stop-emissions sentinel.
+      backstop/src/emissions/manager.rs::remove_pool:
+        authorization: No caller auth check; requires target address to exist in reward_zone
+          or errors.
+        vector_params: Mutates &mut Vec<Address> reward_zone by locating first_index_of
+          target and removing that entry.
+        time_dependent: Requires last_distribution_time to be within 24*60*60 seconds
+          of current ledger timestamp before removal.
+        sentinel_values: Sets removed pool emission index to i128::MAX to disable
+          future emissions; None from first_index_of means missing entry and triggers
+          error.
+      backstop/src/emissions/manager.rs::distribute:
+        authorization: No caller auth check; requires non-empty reward zone, sufficient
+          elapsed time since last distribution, and enforces max backfill cap when
+          emitter lookup fails.
+        vector_params: Iterates over stored reward_zone Vec<Address> to sum non_queued_tokens
+          across pools; no vector parameter.
+        time_dependent: Driven by emitter last distribution, stored last_distribution_time,
+          current ledger timestamp for backfill fallback, and requires emitter_last_distribution
+          > last_distribution + 1 hour.
+        sentinel_values: Treats last_distribution == 0 as uninitialized first run;
+          emitter client error acts as backfill mode sentinel; backfill_status Some(true)/None
+          controls reset behavior.
+      backstop/src/emissions/manager.rs::gulp_emissions:
+        authorization: No caller auth check; processes any provided pool address and
+          only acts when accrued emissions are positive.
+        vector_params: No vector parameters or vector iteration.
+        time_dependent: Uses current ledger sequence to set token allowance expiration
+          ~120 days ahead; otherwise depends on update routines rather than direct
+          timestamp gating.
+        sentinel_values: Returns (0, 0) when no new emissions; splits positive emissions
+          by fixed 70% backstop and 30% pool proportions.
+      backstop/src/emissions/manager.rs::update_rz_emis_data:
+        authorization: No caller auth check; only updates if reward-zone emission
+          data exists for the pool.
+        vector_params: No vector parameters.
+        time_dependent: Uses current global reward-zone emission index rather than
+          wall-clock time; updates when stored index is behind gulp index or when
+          forced by to_gulp.
+        sentinel_values: Missing emission data returns 0; boolean to_gulp forces state
+          flush even if index unchanged, and zero non_queued_tokens still updates
+          index with no added accrual.
+      backstop/src/emissions/manager.rs::set_rz_emissions:
+        authorization: No caller auth check; internal storage setter only.
+        vector_params: No vector parameters.
+        time_dependent: No direct time dependence.
+        sentinel_values: to_gulp=true stores accrued as 0 and returns prior accrued
+          amount; to_gulp=false stores accrued and returns 0.
+      backstop/src/emissions/manager.rs::set_backstop_emission_eps:
+        authorization: No caller auth check; updates or initializes backstop emission
+          schedule for the pool.
+        vector_params: No vector parameters.
+        time_dependent: Sets expiration to current ledger timestamp + 7 days, normalizes
+          last_time to current timestamp, and rolls forward un-emitted tokens if prior
+          expiration is still in the future.
+        sentinel_values: Absence of prior emission data initializes index 0 and last_time
+          now; no special numeric sentinel beyond first-time None branch.
+  backstop/src/emissions/mod.rs:
+    content_sha256: 592521291085fb576569da3c7a3315a523dcf5fd975e3e50e6cd3a789044cf4c
+    functions: {}
+  backstop/src/errors.rs:
+    content_sha256: d407c8cddc790caeee725aeb05f283d1bdc1cb50082206fca31d14200f122d91
+    functions: {}
+  backstop/src/events.rs:
+    content_sha256: 71326fc1ff5346de843b78d867a8401d20552d84856f24ab15fc52bf4a31a999
+    functions:
+      backstop/src/events.rs::BackstopEvents::deposit:
+        authorization: None; public event helper only publishes a deposit event and
+          performs no caller/auth checks.
+        vector_params: None; no vector-like parameters, only Address and i128 scalars.
+        time_dependent: No; does not read time/ledger state, only emits provided values.
+        sentinel_values: None explicit; publishes tokens_in and backstop_shares_minted
+          as given without special-case constants.
+      backstop/src/events.rs::BackstopEvents::queue_withdrawal:
+        authorization: None; public event helper only publishes a queue_withdrawal
+          event and performs no caller/auth checks.
+        vector_params: None; no vector-like parameters, only Address, i128, and u64
+          inputs.
+        time_dependent: Yes; includes caller-supplied expiration timestamp in emitted
+          data but does not compute or validate time.
+        sentinel_values: None explicit; publishes amount and expiration as provided
+          without special sentinel handling.
+      backstop/src/events.rs::BackstopEvents::dequeue_withdrawal:
+        authorization: None; public event helper only publishes a dequeue_withdrawal
+          event and performs no caller/auth checks.
+        vector_params: None; no vector-like parameters.
+        time_dependent: No; does not read or depend on time, only emits the provided
+          amount.
+        sentinel_values: None explicit; amount is emitted directly with no sentinel
+          semantics.
+      backstop/src/events.rs::BackstopEvents::withdraw:
+        authorization: None; public event helper only publishes a withdraw event and
+          performs no caller/auth checks.
+        vector_params: None; no vector-like parameters, only Address and i128 scalars.
+        time_dependent: No; does not read time/ledger state, only emits provided values.
+        sentinel_values: None explicit; amount and tokens_out are published as given
+          without special-case constants.
+      backstop/src/events.rs::BackstopEvents::distribute:
+        authorization: None; public event helper only publishes a distribute event
+          and performs no caller/auth checks.
+        vector_params: None; no vector-like parameters.
+        time_dependent: No; does not read or derive time, only emits new_tokens_emitted.
+        sentinel_values: None explicit; new_tokens_emitted is emitted directly with
+          no sentinel handling.
+      backstop/src/events.rs::BackstopEvents::gulp_emissions:
+        authorization: None; public event helper only publishes a gulp_emissions event
+          and performs no caller/auth checks.
+        vector_params: None; no vector-like parameters, only Address and i128 scalars.
+        time_dependent: No; despite emissions context, it does not read time/ledger
+          state and only emits supplied values.
+        sentinel_values: None explicit; new_backstop_emissions and new_pool_emissions
+          are published as provided.
+      backstop/src/events.rs::BackstopEvents::rw_zone_add:
+        authorization: None; public event helper only publishes an rw_zone_add event
+          and performs no caller/auth checks.
+        vector_params: None; no vector-like parameters, though to_remove is an Option<Address>.
+        time_dependent: No; does not read or depend on time, only emits the provided
+          addresses.
+        sentinel_values: Uses Option<Address> for to_remove, so None is the only explicit
+          sentinel-like value indicating no address to remove.
+      backstop/src/events.rs::BackstopEvents::rw_zone_remove:
+        authorization: None; public event helper only publishes an rw_zone_remove
+          event and performs no caller/auth checks.
+        vector_params: None; no vector-like parameters.
+        time_dependent: No; does not read time/ledger state, only emits the provided
+          address.
+        sentinel_values: None explicit; to_remove is emitted directly with no sentinel
+          handling.
+      backstop/src/events.rs::BackstopEvents::claim:
+        authorization: None; public event helper only publishes a claim event and
+          performs no caller/auth checks.
+        vector_params: None; no vector-like parameters.
+        time_dependent: No; does not read time/ledger state, only emits the provided
+          claim amount.
+        sentinel_values: None explicit; amount is emitted directly with no sentinel
+          handling.
+      backstop/src/events.rs::BackstopEvents::draw:
+        authorization: None; public event helper only publishes a draw event and performs
+          no caller/auth checks.
+        vector_params: None; no vector-like parameters.
+        time_dependent: No; does not read time/ledger state, only emits the provided
+          recipient and amount.
+        sentinel_values: None explicit; to and amount are published as given without
+          sentinel semantics.
+      backstop/src/events.rs::BackstopEvents::donate:
+        authorization: None; public event helper only publishes a donate event and
+          performs no caller/auth checks.
+        vector_params: None; no vector-like parameters.
+        time_dependent: No; does not read time/ledger state, only emits the provided
+          donation amount.
+        sentinel_values: None explicit; amount is emitted directly with no sentinel
+          handling.
+  backstop/src/lib.rs:
+    content_sha256: 5b2f5cc53cc31ec7838a5d8f11d95f1a1f33ddad87b719a68c82f9e2c9e3abdb
+    functions: {}
+  backstop/src/storage.rs:
+    content_sha256: 5acb22865c5ea7c7c68e3665f7972119ddc64be095167715220decbc33a006a7
+    functions:
+      backstop/src/storage.rs::extend_instance:
+        authorization: No authorization checks; callable with only &Env.
+        time_dependent: Yes; extends instance TTL using fixed ledger threshold/bump
+          constants.
+      backstop/src/storage.rs::get_persistent_default:
+        authorization: No authorization checks.
+        time_dependent: Yes; on existing persistent entry extends TTL using supplied
+          bump_threshold and bump_amount.
+        sentinel_values: Returns caller-provided default() when key is absent.
+      backstop/src/storage.rs::get_emitter:
+        authorization: No authorization checks.
+        time_dependent: No.
+        sentinel_values: None; unwraps stored Address and will fail if missing.
+      backstop/src/storage.rs::set_emitter:
+        authorization: No authorization checks.
+        time_dependent: No.
+      backstop/src/storage.rs::get_pool_factory:
+        authorization: No authorization checks.
+        time_dependent: No.
+        sentinel_values: None; unwraps stored Address and will fail if missing.
+      backstop/src/storage.rs::set_pool_factory:
+        authorization: No authorization checks.
+        time_dependent: No.
+      backstop/src/storage.rs::get_blnd_token:
+        authorization: No authorization checks.
+        time_dependent: No.
+        sentinel_values: None; unwraps stored Address and will fail if missing.
+      backstop/src/storage.rs::set_blnd_token:
+        authorization: No authorization checks.
+        time_dependent: No.
+      backstop/src/storage.rs::get_usdc_token:
+        authorization: No authorization checks.
+        time_dependent: No.
+        sentinel_values: None; unwraps stored Address and will fail if missing.
+      backstop/src/storage.rs::set_usdc_token:
+        authorization: No authorization checks.
+        time_dependent: No.
+      backstop/src/storage.rs::get_backstop_token:
+        authorization: No authorization checks.
+        time_dependent: No.
+        sentinel_values: None; unwraps stored Address and will fail if missing.
+      backstop/src/storage.rs::set_backstop_token:
+        authorization: No authorization checks.
+        time_dependent: No.
+      backstop/src/storage.rs::get_user_balance:
+        authorization: No authorization checks.
+        time_dependent: Yes; existing entry read bumps persistent TTL with user thresholds.
+        sentinel_values: 'If absent returns UserBalance { shares: 0, q4w: empty vec
+          }.'
+      backstop/src/storage.rs::set_user_balance:
+        authorization: No authorization checks.
+        time_dependent: No; writes persistent storage without TTL extension.
+      backstop/src/storage.rs::get_pool_balance:
+        authorization: No authorization checks.
+        time_dependent: Yes; existing entry read bumps persistent TTL with shared
+          thresholds.
+        sentinel_values: 'If absent returns PoolBalance { shares: 0, tokens: 0, q4w:
+          0 }.'
+      backstop/src/storage.rs::set_pool_balance:
+        authorization: No authorization checks.
+        time_dependent: Yes; after write extends persistent TTL with shared thresholds.
+      backstop/src/storage.rs::get_last_distribution_time:
+        authorization: No authorization checks.
+        time_dependent: Yes; existing entry read bumps persistent TTL with shared
+          thresholds.
+        sentinel_values: If absent returns 0u64.
+      backstop/src/storage.rs::set_last_distribution_time:
+        authorization: No authorization checks.
+        time_dependent: Yes; writes timestamp then extends persistent TTL with shared
+          thresholds.
+      backstop/src/storage.rs::get_reward_zone:
+        authorization: No authorization checks.
+        time_dependent: Yes; existing entry read bumps persistent TTL with shared
+          thresholds.
+        sentinel_values: If absent returns an empty Vec<Address>.
+      backstop/src/storage.rs::set_reward_zone:
+        authorization: No authorization checks.
+        vector_params: 'Accepts reward_zone: &Vec<Address>.'
+        time_dependent: Yes; writes vector then extends persistent TTL with shared
+          thresholds.
+      backstop/src/storage.rs::get_backfill_emissions:
+        authorization: No authorization checks.
+        time_dependent: Yes; existing entry read bumps persistent TTL with shared
+          thresholds.
+        sentinel_values: If absent returns 0i128.
+      backstop/src/storage.rs::set_backfill_emissions:
+        authorization: No authorization checks.
+        time_dependent: Yes; writes value then extends persistent TTL with shared
+          thresholds.
+      backstop/src/storage.rs::get_backfill_status:
+        authorization: No authorization checks.
+        time_dependent: Yes; existing entry read bumps persistent TTL with shared
+          thresholds.
+        sentinel_values: If absent returns None.
+      backstop/src/storage.rs::set_backfill_status:
+        authorization: No authorization checks.
+        time_dependent: Yes; writes bool then extends persistent TTL with shared thresholds.
+      backstop/src/storage.rs::get_rz_emission_index:
+        authorization: No authorization checks.
+        time_dependent: Yes; existing entry read bumps persistent TTL with shared
+          thresholds.
+        sentinel_values: If absent returns 0i128.
+      backstop/src/storage.rs::set_rz_emission_index:
+        authorization: No authorization checks.
+        time_dependent: Yes; writes index then extends persistent TTL with shared
+          thresholds.
+      backstop/src/storage.rs::get_rz_emis_data:
+        authorization: No authorization checks.
+        time_dependent: Yes; existing entry read bumps persistent TTL with shared
+          thresholds.
+        sentinel_values: If absent returns None.
+      backstop/src/storage.rs::set_rz_emis_data:
+        authorization: No authorization checks.
+        time_dependent: Yes; writes record then extends persistent TTL with shared
+          thresholds.
+      backstop/src/storage.rs::get_backstop_emis_data:
+        authorization: No authorization checks.
+        time_dependent: Yes; existing entry read bumps persistent TTL with shared
+          thresholds.
+        sentinel_values: If absent returns None.
+      backstop/src/storage.rs::set_backstop_emis_data:
+        authorization: No authorization checks.
+        time_dependent: No; writes persistent storage without TTL extension.
+      backstop/src/storage.rs::get_user_emis_data:
+        authorization: No authorization checks.
+        time_dependent: Yes; existing entry read bumps persistent TTL with user thresholds.
+        sentinel_values: If absent returns None.
+      backstop/src/storage.rs::set_user_emis_data:
+        authorization: No authorization checks.
+        time_dependent: No; writes persistent storage without TTL extension.
+      backstop/src/storage.rs::get_drop_list:
+        authorization: No authorization checks.
+        time_dependent: No.
+        sentinel_values: None; unwraps stored Vec<(Address, i128)> and will fail if
+          missing.
+      backstop/src/storage.rs::set_drop_list:
+        authorization: No authorization checks.
+        vector_params: 'Accepts drop_list: &Vec<(Address, i128)>.'
+        time_dependent: Yes; writes vector then extends persistent TTL with user thresholds.
+  backstop/src/testutils.rs:
+    content_sha256: 9fe669e964c1b66e0b4d5d72e1fb93a46e68f867ea6e3f5283e9f973b30fd246
+    functions:
+      backstop/src/testutils.rs::create_backstop:
+        authorization: No explicit auth; test helper registers BackstopContract with
+          generated addresses and empty pair vector.
+        vector_params: Constructor receives an empty Vec<(Address, i128)>; no vector
+          input params.
+        time_dependent: No time or ledger dependence.
+        sentinel_values: Uses randomly generated Address values as placeholder constructor
+          data and an empty vector.
+      backstop/src/testutils.rs::create_token:
+        authorization: Uses provided admin only to initialize mock token; no auth
+          checks in helper.
+        vector_params: No vector parameters or vector construction.
+        time_dependent: Not time dependent.
+        sentinel_values: Initializes token with fixed decimals 7 and fixed metadata
+          strings "unit" and "test".
+      backstop/src/testutils.rs::create_blnd_token:
+        authorization: No explicit auth; executes as backstop contract to store the
+          created token as BLND token.
+        vector_params: No vector parameters.
+        time_dependent: Not time dependent.
+        sentinel_values: No sentinel constants beyond delegating to create_token.
+      backstop/src/testutils.rs::create_usdc_token:
+        authorization: No explicit auth; executes as backstop contract to store the
+          created token as USDC token.
+        vector_params: No vector parameters.
+        time_dependent: Not time dependent.
+        sentinel_values: No sentinel constants beyond delegating to create_token.
+      backstop/src/testutils.rs::create_backstop_token:
+        authorization: No explicit auth; executes as backstop contract to store the
+          created token as backstop token.
+        vector_params: No vector parameters.
+        time_dependent: Not time dependent.
+        sentinel_values: No sentinel constants beyond delegating to create_token.
+      backstop/src/testutils.rs::create_mock_pool_factory:
+        authorization: No explicit auth; executes as backstop contract to store the
+          mock pool factory address.
+        vector_params: No vector parameters.
+        time_dependent: Not time dependent.
+        sentinel_values: Uses a zeroed BytesN<32> pool_hash and generated BLND address
+          as mock initialization data.
+      backstop/src/testutils.rs::create_emitter:
+        authorization: No explicit auth; executes as backstop contract to store emitter
+          address, then initializes emitter with supplied token/backstop addresses.
+        vector_params: No vector parameters.
+        time_dependent: Yes; temporarily sets ledger timestamp to emitter_last_distro
+          for initialization, then restores previous timestamp.
+        sentinel_values: 'Uses fixed LedgerInfo fields: protocol_version 22, sequence_number
+          0, base_reserve 10, min TTLs 10, max_entry_ttl 3110400.'
+      backstop/src/testutils.rs::create_comet_lp_pool:
+        authorization: No explicit auth; uses admin to mint seed balances and initialize
+          the Comet pool.
+        vector_params: Constructs token, weight, and balance vectors internally for
+          init; no vector input params.
+        time_dependent: Not time dependent.
+        sentinel_values: Uses fixed 80/20 weights, seed balances 1_000_0000000 and
+          25_0000000, and swap fee 0_0030000.
+      backstop/src/testutils.rs::create_comet_lp_pool_with_tokens_per_share:
+        authorization: No explicit auth; uses admin to mint computed seed balances,
+          initializes pool, and executes as backstop contract to store it as backstop
+          token.
+        vector_params: Constructs token, weight, and balance vectors internally for
+          init; no vector input params.
+        time_dependent: Not time dependent.
+        sentinel_values: Uses fixed 100-share scaling, fixed 80/20 weights, and fixed
+          swap fee 0_0030000; totals are 100 * per-share inputs.
+      backstop/src/testutils.rs::assert_eq_vec_q4w:
+        authorization: No authorization logic; pure test assertion helper.
+        vector_params: Takes actual and expected Vec<Q4W> and compares elements by
+          index.
+        time_dependent: Not time dependent.
+        sentinel_values: Requires equal vector lengths before comparing each Q4W.amount
+          and Q4W.exp.
+  mocks/mock-pool-factory/src/errors.rs:
+    content_sha256: b116f3698a4aa4fd0399f02d34e9684ac09a778ba02b86f32ca5fefd0eabc1b2
+    functions: {}
+  mocks/mock-pool-factory/src/lib.rs:
+    content_sha256: 289aca6d622de02f2aaa58df9427c19e4640c929ddfa6f07daede807c8d3471b
+    functions: {}
+  mocks/mock-pool-factory/src/pool_factory.rs:
+    content_sha256: ee23c4f9da4640b2a4fc6ca491c5fd5fb5afbe6b0edf54fb1e63e2f35d5834c3
+    functions:
+      mocks/mock-pool-factory/src/pool_factory.rs::MockPoolFactory::__constructor:
+        authorization: No authorization checks; stores provided PoolInitMeta in contract
+          storage during construction.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special threshold checks.
+      mocks/mock-pool-factory/src/pool_factory.rs::MockPoolFactory::deploy:
+        authorization: Requires auth from the admin address via admin.require_auth()
+          before deployment.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent; only extends instance storage lifetime.
+        sentinel_values: Rejects backstop_take_rate >= 1_0000000 with InvalidPoolInitArgs;
+          _salt is accepted but unused.
+      mocks/mock-pool-factory/src/pool_factory.rs::MockPoolFactory::is_pool:
+        authorization: No authorization checks.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values; returns whether pool_address is marked
+          deployed in storage.
+      mocks/mock-pool-factory/src/pool_factory.rs::MockPoolFactory::set_pool:
+        authorization: No authorization checks.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values; marks pool_address as deployed in storage.
+  mocks/mock-pool-factory/src/storage.rs:
+    content_sha256: afcc50436175e0c4fbae0cbc4a666cc44b565ae10ea328e6867413dabd830384
+    functions:
+      mocks/mock-pool-factory/src/storage.rs::extend_instance:
+        authorization: No authorization checks; callable by anyone with Env access.
+        vector_params: No vector parameters.
+        time_dependent: Yes; extends instance TTL using fixed ledger thresholds/bump
+          constants (~30/31 days).
+        sentinel_values: No sentinel values or fallback branches.
+      mocks/mock-pool-factory/src/storage.rs::get_pool_init_meta:
+        authorization: No authorization checks; reads instance storage directly.
+        vector_params: No vector parameters.
+        time_dependent: No explicit time-dependent logic.
+        sentinel_values: Requires PoolInitMeta to exist; unwrap_optimized will fail
+          if missing.
+      mocks/mock-pool-factory/src/storage.rs::set_pool_init_meta:
+        authorization: No authorization checks; writes PoolInitMeta to instance storage.
+        vector_params: No vector parameters.
+        time_dependent: No explicit time-dependent logic.
+        sentinel_values: No sentinel values; overwrites PoolInitMeta key with provided
+          struct.
+      mocks/mock-pool-factory/src/storage.rs::is_deployed:
+        authorization: No authorization checks; reads persistent deployment flag for
+          the supplied contract address.
+        vector_params: No vector parameters.
+        time_dependent: Yes; on existing entry, extends persistent TTL using fixed
+          shared ledger thresholds/bump constants (~45/46 days).
+        sentinel_values: Returns false when the contract key is absent; stored bool
+          value is the deployment sentinel.
+      mocks/mock-pool-factory/src/storage.rs::set_deployed:
+        authorization: No authorization checks; marks the supplied contract address
+          as deployed in persistent storage.
+        vector_params: No vector parameters.
+        time_dependent: Yes; extends persistent TTL after setting using fixed shared
+          ledger thresholds/bump constants (~45/46 days).
+        sentinel_values: Stores true as the deployment marker; no alternate sentinel
+          handling.
+  mocks/moderc3156/src/lib.rs:
+    content_sha256: 5c56c0b0c98ff296387b53cd3f266c642ca1e77dbd11211fae5e5f4be169859f
+    functions:
+      mocks/moderc3156/src/lib.rs::FlashLoanReceiverModifiedERC3156::exec_op:
+        authorization: Requires authorization from the `caller` address via `caller.require_auth()`
+          before proceeding.
+        vector_params: No vector or slice parameters; inputs are scalar `Env`, `Address`,
+          and `i128` values.
+        time_dependent: No time-dependent logic; uses `env.current_contract_address()`
+          only to identify the contract for transfer.
+        sentinel_values: No sentinel/control values; `_fee` is ignored and `amount`
+          is transferred back to `caller`.
+  pool-factory/src/errors.rs:
+    content_sha256: c109e8dc2942d42e798a74a07bf88e55966f39fad8ec3740c7f675f4b319aeb5
+    functions: {}
+  pool-factory/src/events.rs:
+    content_sha256: cab928a6cddda8e102a50c3ef19e0d78e00a966c0fd429c6d48f6dc313fab308
+    functions:
+      pool-factory/src/events.rs::PoolFactoryEvents::deploy:
+        authorization: No authorization checks; publicly emits a deploy event using
+          the provided Env.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent; no ledger time/sequence access.
+        sentinel_values: Uses fixed event topic symbol "deploy"; no sentinel input
+          values or special-case constants.
+  pool-factory/src/lib.rs:
+    content_sha256: 6945cb3182a73ef630f0102785bd061bdd0473932989cfcb1860d289120436f7
+    functions: {}
+  pool-factory/src/pool_factory.rs:
+    content_sha256: 87ea84ab4f3a6ae1faed87bb55319fe823176cfce47998569167c82322da3b50
+    functions:
+      pool-factory/src/pool_factory.rs::PoolFactoryContract::__constructor:
+        authorization: No auth check; writes provided PoolInitMeta to storage during
+          construction.
+        vector_params: No vector/list parameters; only Env and PoolInitMeta are accepted.
+        time_dependent: Not time-dependent; no ledger timestamp/sequence access, only
+          storage write.
+        sentinel_values: No explicit sentinel values or range checks.
+      pool-factory/src/pool_factory.rs::PoolFactoryContract::deploy:
+        authorization: Requires admin authorization via admin.require_auth() before
+          deployment.
+        vector_params: No vector/list parameters; uses fixed-size BytesN<32> salt
+          and scalar/address/string inputs.
+        time_dependent: Not time-dependent; extends instance storage lifetime but
+          does not read time/ledger values.
+        sentinel_values: Rejects backstop_take_rate >= 1_0000000, max_positions <
+          2 or > 100, and min_collateral < 0 as invalid init args.
+      pool-factory/src/pool_factory.rs::PoolFactoryContract::is_pool:
+        authorization: No auth required; simply checks whether the address is marked
+          as deployed.
+        vector_params: No vector/list parameters; accepts only Env and a single Address.
+        time_dependent: Not time-dependent; only extends instance storage lifetime
+          and reads deployment flag.
+        sentinel_values: No explicit sentinel values; returns stored deployed-status
+          boolean for the address.
+  pool-factory/src/storage.rs:
+    content_sha256: 5dc339f59cfccf6c877fe318c17fcaa77617fd3ecd43c2fc8be57e61173cb086
+    functions:
+      pool-factory/src/storage.rs::extend_instance:
+        authorization: No authorization check; any caller of this helper can trigger
+          instance storage TTL extension.
+        time_dependent: Yes; extends instance TTL using fixed ledger-based thresholds/bump
+          (~30/31 days).
+        sentinel_values: Uses constant TTL thresholds LEDGER_THRESHOLD_INSTANCE and
+          LEDGER_BUMP_INSTANCE; no special return sentinel.
+      pool-factory/src/storage.rs::get_pool_init_meta:
+        authorization: No authorization check; reads instance storage directly.
+        time_dependent: No explicit time-dependent logic.
+        sentinel_values: Looks up Symbol("PoolMeta") and unwraps; missing value is
+          treated as absent/panic rather than a default sentinel.
+      pool-factory/src/storage.rs::set_pool_init_meta:
+        authorization: No authorization check; writes provided pool metadata into
+          instance storage.
+        time_dependent: No explicit time-dependent logic.
+        sentinel_values: Stores under Symbol("PoolMeta"); no sentinel values.
+      pool-factory/src/storage.rs::is_deployed:
+        authorization: No authorization check; checks persistent storage for the supplied
+          contract address.
+        time_dependent: Yes; if the deployment flag exists, extends its persistent
+          TTL using fixed ledger-based thresholds/bump (~100/120 days).
+        sentinel_values: Returns false when the Contracts(address) key is absent;
+          stored flag is a bool under PoolFactoryDataKey::Contracts.
+      pool-factory/src/storage.rs::set_deployed:
+        authorization: No authorization check; marks the supplied contract address
+          as deployed in persistent storage.
+        time_dependent: Yes; after writing, extends persistent TTL using fixed ledger-based
+          thresholds/bump (~100/120 days).
+        sentinel_values: Stores bool true under PoolFactoryDataKey::Contracts(address);
+          true acts as the deployed marker.
+  pool-factory/src/test.rs:
+    content_sha256: b2ecadbc1c8972537faaa5b298a87fb149a0b04407c684d48ea8099364a8cf46
+    functions: {}
+  pool/src/auctions/auction.rs:
+    content_sha256: dfcd02a86cc57b70f66176e51fa297e9bc8726393f5233cf7c686098f85e2558
+    functions:
+      pool/src/auctions/auction.rs::AuctionType::from_u32:
+        authorization: None; pure enum conversion with no caller/auth checks.
+        time_dependent: No.
+        sentinel_values: Maps 0/1/2 to auction variants; any other value panics with
+          BadRequest.
+      pool/src/auctions/auction.rs::create_auction:
+        authorization: None in this function; no caller/auth checks before creating
+          and storing the auction.
+        vector_params: bid and lot are Vec<Address> inputs forwarded unchanged to
+          the auction-type-specific creation helper.
+        time_dependent: No direct time dependence; stores returned AuctionData as-is.
+        sentinel_values: auction_type must be 0/1/2 via from_u32 or panic BadRequest;
+          percent semantics are delegated to helper validation.
+      pool/src/auctions/auction.rs::delete_liquidation:
+        authorization: None; deletes only the UserLiquidation auction for the provided
+          user without auth or health verification.
+        time_dependent: No.
+        sentinel_values: Requires an existing auction under AuctionType::UserLiquidation
+          (u32 0) or panics with BadRequest.
+      pool/src/auctions/auction.rs::fill:
+        authorization: Rejects self-fill when user == filler_state.address; otherwise
+          no explicit auth check in this function.
+        time_dependent: Yes; uses scale_auction, which depends on current ledger sequence
+          versus auction start block.
+        sentinel_values: auction_type must be valid 0/1/2; storage::get_auction must
+          find an auction; percent_filled validation is delegated to scale_auction;
+          if no remainder, stored auction is deleted.
+      pool/src/auctions/auction.rs::scale_auction:
+        authorization: None; internal scaling helper only.
+        time_dependent: Yes; scales bid/lot using ledger.sequence() - auction_data.block,
+          with 0.5% per-block adjustment, lot ramping to 100% by block 200 and bid
+          decaying to 0 by block 400.
+        sentinel_values: percent_filled must be 1..=100 or panic BadRequest; bid_modifier
+          becomes 0 at block_dif >= 400; returns None for remaining auction when both
+          remaining bid and lot maps are empty.
+  pool/src/auctions/backstop_interest_auction.rs:
+    content_sha256: f250466e9b1f8226b995da6d26f787d68437b16b1834b002a06092af870a0a2a
+    functions:
+      pool/src/auctions/backstop_interest_auction.rs::create_interest_auction_data:
+        authorization: Only callable when user equals stored backstop address; otherwise
+          BadRequest.
+        vector_params: bid must contain exactly one address equal to backstop token;
+          lot length must not exceed pool.config.max_positions and each lot asset
+          is included only if its reserve backstop_credit > 0.
+        time_dependent: Sets auction_data.block to current ledger sequence + 1.
+        sentinel_values: Requires percent == 100; rejects existing interest auction,
+          empty resulting lot, interest_value <= 200 * 10^price_decimals, and invalid
+          bid; zero/absent backstop_credit assets are skipped.
+      pool/src/auctions/backstop_interest_auction.rs::fill_interest_auction:
+        authorization: Filler must not be the backstop address; otherwise BadRequest.
+        vector_params: No vector parameters; iterates auction_data.lot entries and
+          reads the backstop token amount from auction_data.bid.
+        time_dependent: No time-dependent logic.
+        sentinel_values: Uses auction_data.bid.get(backstop_token).unwrap_or(0); donates
+          only if bid amount > 0, then subtracts each lot_amount from reserve backstop_credit
+          and transfers tokens.
+  pool/src/auctions/bad_debt_auction.rs:
+    content_sha256: 43f11f438db68ab4f25bc9e17179ddacf2dc679de3bb93f935d0b51c37f445ba
+    functions:
+      pool/src/auctions/bad_debt_auction.rs::create_bad_debt_auction_data:
+        authorization: Only the configured backstop address may create this auction;
+          otherwise BadRequest, and it also rejects if a bad-debt auction already
+          exists.
+        vector_params: bid must not exceed max_positions and every listed asset must
+          correspond to a positive backstop liability; lot must contain exactly one
+          address equal to the backstop token.
+        time_dependent: Sets auction_data.block to current ledger sequence + 1; otherwise
+          no time-based branching.
+        sentinel_values: Requires percent == 100; rejects empty/zero-value bid, missing
+          liability entries via unwrap_or(0), invalid lot length/token, and caps lot_amount
+          at available backstop tokens with min(...).
+      pool/src/auctions/bad_debt_auction.rs::fill_bad_debt_auction:
+        authorization: Any filler except the backstop address may fill; if filler_state.address
+          equals backstop address it errors with BadRequest.
+        vector_params: No vector parameters; consumes auction_data maps, transferring
+          bid liabilities from backstop to filler and reading the lot amount for the
+          backstop token.
+        time_dependent: No direct ledger-time dependence; only conditionally defaults
+          remaining liabilities when computed backstop threshold is below a fixed
+          cutoff.
+        sentinel_values: Uses lot.get(...).unwrap_or(0) so zero means no token draw;
+          defaults debt only if threshold < 0_0000003 and remaining liabilities are
+          non-empty.
+  pool/src/auctions/mod.rs:
+    content_sha256: c98f8b5e940a0249b31345b922f1097e61d29ecdd276d8dd821212589fa4a5a1
+    functions: {}
+  pool/src/auctions/user_liquidation_auction.rs:
+    content_sha256: 70e19041892917224ac2b1f8f39046fdae2e88a94b57c3ec02ea6f39a5aa48f4
+    functions:
+      pool/src/auctions/user_liquidation_auction.rs::create_user_liq_auction_data:
+        authorization: No caller authorization check; only rejects target user being
+          the contract or backstop and rejects if that user already has a liquidation
+          auction.
+        vector_params: bid and lot are Vec<Address>; combined length must not exceed
+          max_positions, each bid asset must map to an existing user liability and
+          each lot asset to existing user collateral, and neither resulting set may
+          be empty.
+        time_dependent: Uses current ledger sequence to set AuctionData.block to e.ledger().sequence()
+          + 1.
+        sentinel_values: percent must be 1..=100; full liquidation is all positions
+          with percent >95 but validated at 95; post-liquidation HF must be <=1.15
+          and >=1.03, with full-liquidation check using 1.15; caps estimated withdrawn
+          collateral pct at scalar and errors if capped without all collateral included.
+      pool/src/auctions/user_liquidation_auction.rs::fill_user_liq_auction:
+        authorization: No explicit authorization check; loads the specified user and
+          transfers positions per auction_data between user_state and filler_state.
+        vector_params: No vector parameters directly; consumes auction_data.lot and
+          auction_data.bid maps by cloning them for rm_positions and add_positions.
+        time_dependent: Not time-dependent.
+        sentinel_values: No explicit sentinel constants or threshold checks.
+  pool/src/constants.rs:
+    content_sha256: caab0006feca736731567f84f5d0cd41e0af6a3112f08c3b3c7f9317181f0388
+    functions: {}
+  pool/src/contract.rs:
+    content_sha256: 72a1b1222d0b15e8291eb71f108d6a22160cdce11fd4c230613bfe85da562e73
+    functions:
+      pool/src/contract.rs::PoolContract::__constructor:
+        authorization: Requires admin auth via admin.require_auth() before initialization.
+        time_dependent: No direct time/ledger-dependent logic in this wrapper.
+        sentinel_values: None visible in this function.
+      pool/src/contract.rs::PoolContract::set_admin:
+        authorization: Requires current admin auth and also new_admin auth before
+          updating admin.
+        time_dependent: Not time-dependent; only extends instance storage lifetime.
+        sentinel_values: None visible in this function.
+      pool/src/contract.rs::PoolContract::update_pool:
+        authorization: Requires current admin auth.
+        time_dependent: Not time-dependent; only extends instance storage lifetime.
+        sentinel_values: None visible in this function.
+      pool/src/contract.rs::PoolContract::queue_set_reserve:
+        authorization: Requires current admin auth.
+        time_dependent: Not directly time-dependent; only extends instance storage
+          lifetime.
+        sentinel_values: None visible in this function.
+      pool/src/contract.rs::PoolContract::cancel_set_reserve:
+        authorization: Requires current admin auth.
+        time_dependent: Not directly time-dependent; only extends instance storage
+          lifetime.
+        sentinel_values: None visible in this function.
+      pool/src/contract.rs::PoolContract::set_reserve:
+        authorization: No auth enforced in this wrapper.
+        time_dependent: No direct time/ledger-dependent logic visible in this wrapper.
+        sentinel_values: Returns reserve index u32; no sentinel constants visible.
+      pool/src/contract.rs::PoolContract::get_config:
+        authorization: No auth required.
+        time_dependent: Not time-dependent.
+      pool/src/contract.rs::PoolContract::get_admin:
+        authorization: No auth required.
+        time_dependent: Not time-dependent.
+      pool/src/contract.rs::PoolContract::get_reserve:
+        authorization: No auth required.
+        time_dependent: Loads reserve updated to current ledger via Reserve::load,
+          so ledger-state dependent.
+        sentinel_values: None visible in this wrapper.
+      pool/src/contract.rs::PoolContract::get_market:
+        authorization: No auth required.
+        vector_params: Builds and returns Vec<Reserve> from stored reserve address
+          list.
+        time_dependent: Each reserve is loaded for current ledger, so result is ledger-state
+          dependent.
+        sentinel_values: None visible in this function.
+      pool/src/contract.rs::PoolContract::get_positions:
+        authorization: No auth required.
+        time_dependent: Not explicitly time-dependent in this wrapper.
+        sentinel_values: None visible in this function.
+      pool/src/contract.rs::PoolContract::submit:
+        authorization: Requires spender auth, and also from auth when from != spender.
+        vector_params: 'Accepts requests: Vec<Request>.'
+        time_dependent: Not explicitly time-dependent in this wrapper; extends instance
+          storage lifetime.
+        sentinel_values: Boolean false passed to execute_submit selects non-allowance
+          path.
+      pool/src/contract.rs::PoolContract::submit_with_allowance:
+        authorization: Requires spender auth, and also from auth when from != spender.
+        vector_params: 'Accepts requests: Vec<Request>.'
+        time_dependent: Not explicitly time-dependent in this wrapper; extends instance
+          storage lifetime.
+        sentinel_values: Boolean true passed to execute_submit selects allowance/transfer_from
+          path.
+      pool/src/contract.rs::PoolContract::flash_loan:
+        authorization: Requires from auth.
+        vector_params: 'Accepts requests: Vec<Request>; flash_loan is a struct, not
+          a vector.'
+        time_dependent: Not explicitly time-dependent in this wrapper; extends instance
+          storage lifetime.
+        sentinel_values: None visible in this function.
+      pool/src/contract.rs::PoolContract::bad_debt:
+        authorization: No auth enforced in this wrapper.
+        time_dependent: No direct time/ledger-dependent logic visible in this wrapper.
+        sentinel_values: None visible in this function.
+      pool/src/contract.rs::PoolContract::update_status:
+        authorization: No caller auth in wrapper; status update delegated, with documented
+          restriction when pool is status 4.
+        time_dependent: Yes; updates status based on current backstop state/conditions
+          and extends instance storage lifetime.
+        sentinel_values: 'Status codes are meaningful sentinels: 1 active, 3 on-ice,
+          5 frozen (doc also references blocked status 4).'
+      pool/src/contract.rs::PoolContract::set_status:
+        authorization: Requires current admin auth.
+        time_dependent: Yes; permitted status depends on current backstop withdrawal
+          thresholds/conditions, though check is delegated.
+        sentinel_values: pool_status uses sentinel codes 0=admin active, 2=admin on-ice,
+          4=admin frozen.
+      pool/src/contract.rs::PoolContract::gulp:
+        authorization: No auth required.
+        time_dependent: Depends on current token balance delta when called; extends
+          instance storage lifetime.
+        sentinel_values: Negative token deltas are documented as ignored, making negative
+          deltas an effective sentinel condition.
+      pool/src/contract.rs::PoolContract::gulp_emissions:
+        authorization: No auth required.
+        time_dependent: Yes; consumes/distributes emissions available at call time
+          and extends instance storage lifetime.
+        sentinel_values: None visible in this wrapper.
+      pool/src/contract.rs::PoolContract::set_emissions_config:
+        authorization: Requires current admin auth.
+        vector_params: 'Accepts res_emission_metadata: Vec<ReserveEmissionMetadata>.'
+        time_dependent: Configuration affects next emission update/cycle per docs,
+          but no direct time logic in wrapper.
+        sentinel_values: No explicit sentinel values in wrapper; docs note total shares
+          must not exceed 1.
+      pool/src/contract.rs::PoolContract::claim:
+        authorization: Requires from auth.
+        vector_params: 'Accepts reserve_token_ids: Vec<u32>.'
+        time_dependent: Claims outstanding emissions accrued up to call time; extends
+          instance storage lifetime.
+        sentinel_values: 'Reserve token id encoding is sentinel-like per docs: dToken=reserve_index*2,
+          bToken=reserve_index*2+1.'
+      pool/src/contract.rs::PoolContract::get_reserve_emissions:
+        authorization: No auth required.
+        time_dependent: Reads current stored emissions data; no explicit time logic
+          in wrapper.
+        sentinel_values: Returns Option<ReserveEmissionData>; None indicates no stored
+          emissions data for the token index.
+      pool/src/contract.rs::PoolContract::get_user_emissions:
+        authorization: No auth required.
+        time_dependent: Reads current stored user emissions data; no explicit time
+          logic in wrapper.
+        sentinel_values: Returns Option<UserEmissionData>; None indicates no stored
+          user emissions data for that user/token index.
+      pool/src/contract.rs::PoolContract::new_auction:
+        authorization: No auth required in this wrapper.
+        vector_params: 'Accepts bid: Vec<Address> and lot: Vec<Address>.'
+        time_dependent: Auction quote/data creation may depend on current block/state
+          per auction system, though wrapper only extends instance lifetime.
+        sentinel_values: auction_type uses sentinel codes 0=liquidation, 1=bad debt,
+          2=interest; docs expect percent=100 for bad debt and interest auctions.
+      pool/src/contract.rs::PoolContract::get_auction:
+        authorization: No auth required.
+        time_dependent: Yes; docs state returned auction includes a quote based on
+          the current block.
+        sentinel_values: auction_type uses sentinel codes 0=liquidation, 1=bad debt,
+          2=interest.
+  pool/src/dependencies/backstop.rs:
+    content_sha256: e30fb520e32325ebe1f77cfeba38f3c164c5362dd5791a09eda15291dc317212
+    functions: {}
+  pool/src/dependencies/mod.rs:
+    content_sha256: 142d750e80fe87eeabf7bfd2941994704d813320c28f5b468c04721cb232aeaa
+    functions: {}
+  pool/src/emissions/distributor.rs:
+    content_sha256: e80752b64a9e2cf062d7742b834c0a6ca7740707bd16e77b00814a35bf563c07
+    functions:
+      pool/src/emissions/distributor.rs::execute_claim:
+        authorization: No explicit auth check; claims emissions for any provided from
+          address and transfers accrued BLND from backstop to the specified to address
+          via contract-controlled transfer_from.
+        vector_params: 'reserve_token_ids: &Vec<u32>; iterates each reserve token
+          id to accumulate claimable emissions.'
+        time_dependent: Indirectly time-dependent through claim_emissions -> update_emission_data,
+          which uses current ledger timestamp and emission expiration to update indices
+          before claiming.
+        sentinel_values: Returns 0 if nothing claimable; reserve_token_id parity 0/1
+          selects liabilities/supply and invalid/missing reserve causes BadRequest
+          panic; only transfers if to_claim > 0.
+      pool/src/emissions/distributor.rs::update_emissions:
+        authorization: No explicit auth check; updates reserve and user emission accounting
+          for the supplied user address.
+        time_dependent: Yes; calls update_emission_data, which advances emission state
+          using ledger timestamp and expiration.
+        sentinel_values: No-op if update_emission_data returns None; passes claim=false
+          so no tokens are returned/transferred and function returns unit.
+      pool/src/emissions/distributor.rs::claim_emissions:
+        authorization: No explicit auth check; computes and marks claimed emissions
+          for the supplied user address.
+        time_dependent: Yes; calls update_emission_data, which depends on current
+          ledger timestamp and expiration.
+        sentinel_values: Returns 0 when no reserve emission data exists; otherwise
+          delegates with claim=true to return accrued amount.
+      pool/src/emissions/distributor.rs::update_emission_data:
+        authorization: No explicit auth check; updates stored reserve emission data
+          for the given reserve token id if present.
+        time_dependent: Directly time-dependent on e.ledger().timestamp(); caps updates
+          at expiration and skips when timestamp equals last_time or emissions are
+          expired.
+        sentinel_values: Returns None if no emission data exists; early-returns unchanged
+          data when last_time >= expiration, current timestamp == last_time, eps ==
+          0, or supply == 0.
+      pool/src/emissions/distributor.rs::update_user_emissions:
+        authorization: No explicit auth check; updates emission accrual state for
+          the specified user address.
+        time_dependent: Indirectly time-dependent because it consumes reserve emission
+          index produced from time-based reserve updates, but uses no timestamp itself.
+        sentinel_values: Returns 0 if existing user index matches reserve index and
+          claim is false; if no user data and balance == 0 initializes with accrued
+          0; if balance == 0 no new accrual is added; require_nonnegative enforces
+          nonnegative index delta.
+      pool/src/emissions/distributor.rs::set_user_emissions:
+        authorization: No explicit auth check; writes user emission data for the specified
+          user address.
+        time_dependent: Not directly time-dependent.
+        sentinel_values: If claim is true, stores accrued as 0 and returns prior accrued
+          amount; otherwise stores accrued value and returns 0.
+  pool/src/emissions/manager.rs:
+    content_sha256: efde40b6771e6cf284f8e2cc3fbec10086b03fbebd349cda1e02dd58f3f8759c
+    functions:
+      pool/src/emissions/manager.rs::set_pool_emissions:
+        authorization: No caller authorization check in this function.
+        vector_params: Takes Vec<ReserveEmissionMetadata>; iterates all entries and
+          validates each before storing shares in a map keyed by res_index*2+res_type.
+        time_dependent: Not time-dependent.
+        sentinel_values: Rejects res_type > 1, missing reserve index, or share ==
+          0 with PoolError::BadRequest.
+      pool/src/emissions/manager.rs::gulp_emissions:
+        authorization: No caller authorization check in this function.
+        vector_params: No vector parameters.
+        time_dependent: Not directly time-dependent; delegates to backstop gulp and
+          downstream emission update logic.
+        sentinel_values: No local sentinel checks; may panic if backstop reward-zone
+          precondition fails or delegated gulp processing rejects emissions.
+      pool/src/emissions/manager.rs::do_gulp_emissions:
+        authorization: Private helper with no caller authorization check.
+        vector_params: Builds an internal Vec<(ReserveConfig, Address, u32, u64)>
+          of enabled reserve emissions before distributing.
+        time_dependent: Not directly using ledger time; splits new_emissions across
+          enabled reserves and delegates per-reserve timed updates.
+        sentinel_values: Panics with PoolError::BadRequest if new_emissions < SCALAR_7;
+          ignores disabled reserves when computing total_share/distribution.
+      pool/src/emissions/manager.rs::update_reserve_emission_eps:
+        authorization: Private helper with no caller authorization check.
+        vector_params: No vector parameters.
+        time_dependent: Uses current ledger timestamp to set 7-day expiration, refresh
+          last_time, and roll un-emitted tokens from an unexpired prior schedule into
+          the new eps.
+        sentinel_values: res_token_id%2 selects d_supply for 0 or b_supply for 1,
+          otherwise panics with PoolError::BadRequest; absence of prior emission data
+          is treated as first-time initialization.
+  pool/src/emissions/mod.rs:
+    content_sha256: a98d493416fdfbd547a6be2280c4a53d51beaa49e871eaa4180b667b78e8c1c7
+    functions: {}
+  pool/src/errors.rs:
+    content_sha256: 0b1d417f08e7359357b916385892b5a8868810c8d770410959e5a2fdfb282028
+    functions: {}
+  pool/src/events.rs:
+    content_sha256: 7a83eba996e58624da73c9c476ad3a96d05fee2d43e0eb63467b92b8acfbacef
+    functions:
+      pool/src/events.rs::PoolEvents::set_admin:
+        authorization: No authorization enforced; emits event using provided admin
+          as topic and new_admin as data.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::update_pool:
+        authorization: No authorization enforced; emits event using provided admin
+          as topic.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::queue_set_reserve:
+        authorization: No authorization enforced; emits event using provided admin
+          as topic.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::cancel_set_reserve:
+        authorization: No authorization enforced; emits event using provided admin
+          as topic.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::set_reserve:
+        authorization: No authorization enforced; only emits event with fixed set_reserve
+          symbol topic.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::set_status:
+        authorization: No authorization enforced; only emits event with fixed set_status
+          symbol topic.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::set_status_admin:
+        authorization: No authorization enforced; emits event using provided admin
+          as additional topic.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::reserve_emission_update:
+        authorization: No authorization enforced; only emits event.
+        vector_params: No vector parameters.
+        time_dependent: Time-dependent via expiration u64 included in event data.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::gulp_emissions:
+        authorization: No authorization enforced; only emits event.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::claim:
+        authorization: No authorization enforced; emits event using provided from
+          address as topic.
+        vector_params: 'Has vector parameter reserve_token_ids: Vec<u32>, emitted
+          in data.'
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::bad_debt:
+        authorization: No authorization enforced; emits event using provided user
+          and asset as topics.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::defaulted_debt:
+        authorization: No authorization enforced; emits event using provided asset
+          as topic.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::supply:
+        authorization: No authorization enforced; emits event using provided asset
+          and from as topics.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::withdraw:
+        authorization: No authorization enforced; emits event using provided asset
+          and from as topics.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::supply_collateral:
+        authorization: No authorization enforced; emits event using provided asset
+          and from as topics.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::withdraw_collateral:
+        authorization: No authorization enforced; emits event using provided asset
+          and from as topics.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::borrow:
+        authorization: No authorization enforced; emits event using provided asset
+          and from as topics.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::repay:
+        authorization: No authorization enforced; emits event using provided asset
+          and from as topics.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::flash_loan:
+        authorization: No authorization enforced; emits event using provided asset,
+          from, and contract as topics.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::gulp:
+        authorization: No authorization enforced; emits event using provided asset
+          as topic.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::new_auction:
+        authorization: No authorization enforced; emits event using provided auction_type
+          and user as topics.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::fill_auction:
+        authorization: No authorization enforced; emits event using provided auction_type
+          and user as topics.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: No sentinel values or special-case constants.
+      pool/src/events.rs::PoolEvents::delete_liquidation_auction:
+        authorization: No authorization enforced; emits event using provided from
+          address as topic.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: Uses unit value () as event data; no numeric sentinel constants.
+  pool/src/lib.rs:
+    content_sha256: 11c4462f613bc3a705433b4a413ea0cd2046f637827f5948b501fb1f116b7f5c
+    functions: {}
+  pool/src/pool/actions.rs:
+    content_sha256: 46b46063412d0284a50b18b38b1fe427b5e48adf1b501d974cabcaf0e747b889
+    functions:
+      pool/src/pool/actions.rs::RequestType::from_u32:
+        authorization: No authorization checks; converts request_type integer to enum
+          and panics with BadRequest on unknown value.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: Matches sentinel discriminants 0..9 to RequestType variants;
+          any other value triggers PoolError::BadRequest.
+      pool/src/pool/actions.rs::Actions::new:
+        authorization: No authorization checks.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: Initializes spender_transfer and pool_transfer as empty maps
+          and check_health to false.
+      pool/src/pool/actions.rs::Actions::add_for_spender_transfer:
+        authorization: No authorization checks.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: Accumulates amount into spender_transfer for asset, using
+          unwrap_or(0) when no prior entry exists.
+      pool/src/pool/actions.rs::Actions::add_for_pool_transfer:
+        authorization: No authorization checks.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: Accumulates amount into pool_transfer for asset, using unwrap_or(0)
+          when no prior entry exists.
+      pool/src/pool/actions.rs::Actions::do_check_health:
+        authorization: No authorization checks.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: Sets check_health flag to true and never resets it here.
+      pool/src/pool/actions.rs::build_actions_from_request:
+        authorization: Validates each request by requiring nonnegative amount, pool-level
+          action allowance, and per-request-type/reserve or auction checks in downstream
+          calls; no direct caller auth in this function.
+        vector_params: 'Processes requests: Vec<Request> by iterating all entries
+          in order.'
+        time_dependent: No explicit time/block dependency in this file function.
+        sentinel_values: Uses request_type discriminants 0..9 via from_u32; negative
+          amounts rejected; DeleteLiquidationAuction ignores request fields except
+          type; bad debt and interest auction types expect special address semantics
+          per comments.
+      pool/src/pool/actions.rs::apply_supply:
+        authorization: Requires reserve-level action_allowed for the request type
+          after loading the reserve.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: Converts amount to b-tokens with to_b_token_down and records
+          spender transfer of full request.amount.
+      pool/src/pool/actions.rs::apply_withdraw:
+        authorization: No explicit reserve.require_action_allowed call here; relies
+          on prior request validation and reserve load.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: If requested burn exceeds current supplied b-tokens, caps
+          burn at cur_b_tokens and recomputes tokens_out from all current b-tokens;
+          otherwise uses request.amount directly.
+      pool/src/pool/actions.rs::apply_supply_collateral:
+        authorization: Requires reserve-level action_allowed for the request type
+          after loading the reserve.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: Mints b-tokens with to_b_token_down, transfers full request.amount
+          from spender, and panics with ExceededCollateralCap if reserve.total_supply(e)
+          exceeds reserve.config.collateral_cap.
+      pool/src/pool/actions.rs::apply_withdraw_collateral:
+        authorization: No explicit reserve.require_action_allowed call here; relies
+          on prior request validation and reserve load.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: If requested collateral burn exceeds current collateral b-tokens,
+          caps burn at cur_b_tokens and recomputes tokens_out from all current b-tokens;
+          always sets check_health true.
+      pool/src/pool/actions.rs::apply_borrow:
+        authorization: Requires reserve-level action_allowed for the request type
+          and reserve utilization below max.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: Converts amount to debt tokens with to_d_token_up, transfers
+          full request.amount from pool, and sets check_health true.
+      pool/src/pool/actions.rs::apply_repay:
+        authorization: No explicit reserve.require_action_allowed call here; relies
+          on prior request validation and reserve load.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent.
+        sentinel_values: If computed d_tokens_burnt exceeds current debt, repays only
+          current debt, refunds request.amount minus current underlying borrowed,
+          and require_nonnegative checks refund; otherwise burns d_tokens_burnt and
+          takes full request.amount.
+  pool/src/pool/bad_debt.rs:
+    content_sha256: 89042744b60f813a440b7b00d37d43faa6915f189b5209a799a9c95c7c7df1c7
+    functions:
+      pool/src/pool/bad_debt.rs::transfer_bad_debt_to_backstop:
+        authorization: No explicit auth check; callable publicly, but rejects when
+          user equals stored backstop address and when the user has collateral or
+          no liabilities.
+        vector_params: No vector parameters; iterates over user_state.positions.liabilities
+          and looks up assets from the stored reserve list.
+        time_dependent: Not time-dependent; behavior depends only on current stored
+          user/backstop/pool state.
+        sentinel_values: BadRequest is raised if user is the backstop, or if liabilities
+          is empty or collateral is non-empty.
+  pool/src/pool/config.rs:
+    content_sha256: c23c463e9244c5cc8f70e6436d7a4f10419409543c148eb27ff2de21341e1ac5
+    functions:
+      pool/src/pool/config.rs::execute_initialize:
+        authorization: No caller authorization check in this function; initializes
+          and stores admin/name/backstop/config/blnd token after validating pool config.
+        vector_params: No vector/list parameters.
+        time_dependent: No time or ledger timestamp dependency.
+        sentinel_values: Sets pool status to literal 6; validation requires bstop_rate
+          < SCALAR_7, max_positions in [2, 2*MAX_RESERVES], and min_collateral >=
+          0.
+      pool/src/pool/config.rs::execute_update_pool:
+        authorization: No caller authorization check in this function; updates existing
+          pool config fields then validates and stores.
+        vector_params: No vector/list parameters.
+        time_dependent: No time or ledger timestamp dependency.
+        sentinel_values: Validation enforces bstop_rate < SCALAR_7, max_positions
+          in [2, 2*MAX_RESERVES], and min_collateral >= 0.
+      pool/src/pool/config.rs::execute_queue_set_reserve:
+        authorization: No caller authorization check in this function; queues reserve
+          initialization only if no existing queued reserve for the asset.
+        vector_params: No vector/list parameters.
+        time_dependent: Uses current ledger timestamp; if pool status != 6, unlock_time
+          is delayed by SECONDS_PER_WEEK, otherwise unlocks immediately.
+        sentinel_values: Rejects if a queued reserve already exists; status 6 is treated
+          as setup/no-timelock mode.
+      pool/src/pool/config.rs::execute_cancel_queued_set_reserve:
+        authorization: No caller authorization check in this function; simply deletes
+          queued reserve setup for the asset.
+        vector_params: No vector/list parameters.
+        time_dependent: No time or ledger timestamp dependency.
+        sentinel_values: No special sentinel constants beyond deleting any queued
+          entry for the asset.
+      pool/src/pool/config.rs::execute_set_reserve:
+        authorization: No caller authorization check in this function; executes queued
+          reserve init for the asset after timelock passes.
+        vector_params: No vector/list parameters.
+        time_dependent: Requires queued_init.unlock_time <= current ledger timestamp
+          or panics InitNotUnlocked.
+        sentinel_values: Deletes queued reserve entry before initialization; unlock_time
+          acts as the gating sentinel.
+      pool/src/pool/config.rs::initialize_reserve:
+        authorization: No caller authorization check in this private helper; initializes
+          a new reserve or updates an existing one.
+        vector_params: No vector/list parameters.
+        time_dependent: For new reserves sets last_time to current ledger timestamp.
+        sentinel_values: Existing reserve keeps prior index and requires unchanged
+          decimals; IR parameter changes reset ir_mod to SCALAR_7; new reserves initialize
+          b_rate and d_rate to SCALAR_12, ir_mod to SCALAR_7, supplies/credits to
+          0.
+      pool/src/pool/config.rs::require_valid_reserve_metadata:
+        authorization: No caller authorization check; pure validation helper for reserve
+          metadata.
+        vector_params: No vector/list parameters.
+        time_dependent: No time or ledger timestamp dependency.
+        sentinel_values: Requires decimals <= 18, c_factor and l_factor <= SCALAR_7,
+          util <= 0_9000000, max_util > util and <= SCALAR_7, r_base in [0_0001000,
+          1_0000000), ordered rates r_one <= r_two <= r_three, and reactivity <= 0_0001000.
+      pool/src/pool/config.rs::require_valid_pool_config:
+        authorization: No caller authorization check; pure validation helper for pool
+          config.
+        vector_params: No vector/list parameters.
+        time_dependent: No time or ledger timestamp dependency.
+        sentinel_values: Requires bstop_rate < SCALAR_7, max_positions between 2 and
+          2*MAX_RESERVES inclusive, and min_collateral >= 0.
+  pool/src/pool/gulp.rs:
+    content_sha256: 64a325fd01ad263f82d1136ab73d45d730455baf6495fd0dc41d921ba7a60038
+    functions:
+      pool/src/pool/gulp.rs::execute_gulp:
+        authorization: No caller authorization check; uses current contract address
+          only to read this contract's token balance.
+        vector_params: No vector parameters.
+        time_dependent: Not time-dependent; no ledger timestamp/sequence checks.
+        sentinel_values: Returns 0 when computed token_balance_delta <= 0; otherwise
+          credits and returns the positive delta.
+  pool/src/pool/health_factor.rs:
+    content_sha256: 2ab0db16448b282b8253ba973c135c1bba64bd899a2fc80401cc407375a82cc7
+    functions:
+      pool/src/pool/health_factor.rs::PositionData::calculate_from_positions:
+        authorization: None; computes position aggregates from provided pool and positions
+          without caller/auth checks.
+        vector_params: Iterates reserve list and indexed collateral/liabilities vectors
+          in Positions; missing entries default to 0 via unwrap_or(0).
+        time_dependent: Uses current pool price decimals, reserve data, and oracle
+          prices loaded from storage/pool at call time.
+        sentinel_values: Skips reserves when both balances are 0; initializes aggregate
+          totals to 0 and returns them if no nonzero positions.
+      pool/src/pool/health_factor.rs::PositionData::as_health_factor:
+        authorization: None; pure ratio calculation on PositionData fields.
+        time_dependent: Not directly time-based; result depends only on current struct
+          fields provided to the method.
+        sentinel_values: No explicit sentinel handling; divides collateral_base by
+          liability_base using fixed_div_floor with scalar.
+      pool/src/pool/health_factor.rs::PositionData::is_hf_over:
+        authorization: None; compares computed health factor against supplied max
+          threshold without auth checks.
+        time_dependent: Not directly time-based; depends on current PositionData fields
+          and input max.
+        sentinel_values: If liability_base == 0 returns true immediately; max is expected
+          in 7-decimal precision and scaled with SCALAR_7.
+      pool/src/pool/health_factor.rs::PositionData::is_hf_under:
+        authorization: None; compares computed health factor against supplied min
+          threshold without auth checks.
+        time_dependent: Not directly time-based; depends on current PositionData fields
+          and input min.
+        sentinel_values: If liability_base == 0 returns false immediately; min is
+          expected in 7-decimal precision and scaled with SCALAR_7.
+  pool/src/pool/interest.rs:
+    content_sha256: 194c6e1f0a825c86882e658312dea44d82b6434c3e85eed6d16192505b2d5b54
+    functions:
+      pool/src/pool/interest.rs::calc_accrual:
+        authorization: No authorization checks; pure public calculation using Env
+          timestamp, ReserveConfig, cur_util, ir_mod, and last_time.
+        time_dependent: Yes; depends on e.ledger().timestamp() and last_time, panicking
+          if elapsed time is less than 1 second, and scales accrual by elapsed time
+          over SECONDS_PER_YEAR.
+        sentinel_values: Uses utilization breakpoints target_util and 0_9500000 with
+          final 0_0500000 span; requires delta_time >= 1 or panics with InternalError;
+          clamps new_ir_mod to [SCALAR_7 / 10, 10 * SCALAR_7].
+  pool/src/pool/mod.rs:
+    content_sha256: 71954ddb5f0704e1c8f62784d72bb1280c887f9731b198c326b43f48d7a77309
+    functions: {}
+  pool/src/pool/pool.rs:
+    content_sha256: 54f68cd45b06b6a1bfd27c3f85d90c2f8e937fe15159531ec4a3170358a9619b
+    functions:
+      pool/src/pool/pool.rs::Pool::load:
+        time_dependent: 'no'
+        sentinel_values: price_decimals initialized to None; empty reserve/reserve_to_store/prices
+          collections as cache sentinels
+      pool/src/pool/pool.rs::Pool::load_reserve:
+        vector_params: uses internal Vec<Address> reserves_to_store; params are asset:&Address
+          and store:bool
+        time_dependent: indirectly yes via Reserve::load comment says updated to current
+          ledger timestamp when not cached
+        sentinel_values: store=false skips write-tracking; cached reserve in self.reserves
+          short-circuits ledger load
+      pool/src/pool/pool.rs::Pool::cache_reserve:
+        time_dependent: 'no'
+        sentinel_values: keys cache by reserve.asset; overwrites any existing cached
+          reserve for that asset
+      pool/src/pool/pool.rs::Pool::store_cached_reserves:
+        vector_params: iterates internal Vec<Address> reserves_to_store
+        time_dependent: 'no'
+        sentinel_values: panics with InternalReserveNotFound if a tracked address
+          has no cached reserve
+      pool/src/pool/pool.rs::Pool::require_action_allowed:
+        authorization: pool-status gate only; no caller auth
+        time_dependent: 'no'
+        sentinel_values: action_type sentinels 4 or 9 blocked when status>1, 2 or
+          0 blocked when status>3; otherwise panics InvalidPoolStatus
+      pool/src/pool/pool.rs::Pool::require_under_max:
+        time_dependent: 'no'
+        sentinel_values: only panics MaxPositionsExceeded when effective_count exceeds
+          max_positions and is greater than previous_num
+      pool/src/pool/pool.rs::Pool::load_price_decimals:
+        time_dependent: 'no'
+        sentinel_values: cached Option<u32> price_decimals uses Some(decimals) vs
+          None to avoid repeated oracle calls
+      pool/src/pool/pool.rs::Pool::load_price:
+        time_dependent: yes; rejects oracle prices older than 24*60*60 seconds relative
+          to ledger timestamp
+        sentinel_values: returns cached price if present; panics InvalidPrice if price<=0
+          or stale; unwrap_optimized requires oracle lastprice to be present
+  pool/src/pool/reserve.rs:
+    content_sha256: f438c740d7942bb58f155f9dc425437e135b2c6ca0149e726f520a6c7ea10105
+    functions:
+      pool/src/pool/reserve.rs::Reserve::load:
+        authorization: None; reads reserve config/data from storage for the provided
+          asset and updates reserve state without caller auth checks.
+        time_dependent: Yes; branches on e.ledger().timestamp(), skips if already
+          updated this ledger, passes last_time into calc_accrual, and sets data.last_time
+          to current ledger timestamp.
+        sentinel_values: Short-circuits when current timestamp == data.last_time,
+          when data.b_supply == 0, and when utilization == 0.
+      pool/src/pool/reserve.rs::Reserve::store:
+        authorization: None; writes this reserve's data back to storage with no caller
+          auth checks.
+        time_dependent: No direct time logic.
+      pool/src/pool/reserve.rs::Reserve::accrue:
+        authorization: None; internal state update only, no auth checks.
+        time_dependent: No direct time logic.
+        sentinel_values: Only acts when accrued > 0; initializes new_backstop_credit
+          to 0 and only computes/adds it when bstop_rate > 0.
+      pool/src/pool/reserve.rs::Reserve::utilization:
+        time_dependent: No direct time logic.
+        sentinel_values: None; computes liabilities/supply ratio directly.
+      pool/src/pool/reserve.rs::Reserve::require_utilization_below_max:
+        authorization: None; enforces reserve config by panicking if utilization exceeds
+          max_util.
+        time_dependent: No direct time logic.
+        sentinel_values: Panics when utilization() > config.max_util.
+      pool/src/pool/reserve.rs::Reserve::require_action_allowed:
+        authorization: None; checks reserve enabled flag against requested action
+          type rather than caller identity.
+        time_dependent: No direct time logic.
+        sentinel_values: If config.enabled is false, panics for action_type equal
+          to Supply, SupplyCollateral, or Borrow request discriminants.
+      pool/src/pool/reserve.rs::Reserve::total_liabilities:
+        time_dependent: No direct time logic.
+        sentinel_values: Uses data.d_supply as the debt-token amount to convert; no
+          special-case branching.
+      pool/src/pool/reserve.rs::Reserve::total_supply:
+        time_dependent: No direct time logic.
+        sentinel_values: Uses data.b_supply as the b-token amount to convert; no special-case
+          branching.
+      pool/src/pool/reserve.rs::Reserve::to_asset_from_d_token:
+        time_dependent: No direct time logic.
+        sentinel_values: No explicit sentinels; converts using data.d_rate with ceiling
+          rounding.
+      pool/src/pool/reserve.rs::Reserve::to_asset_from_b_token:
+        time_dependent: No direct time logic.
+        sentinel_values: No explicit sentinels; converts using data.b_rate with floor
+          rounding.
+      pool/src/pool/reserve.rs::Reserve::to_effective_asset_from_d_token:
+        time_dependent: No direct time logic.
+        sentinel_values: No explicit sentinels; divides converted asset amount by
+          config.l_factor with ceiling rounding.
+      pool/src/pool/reserve.rs::Reserve::to_effective_asset_from_b_token:
+        time_dependent: No direct time logic.
+        sentinel_values: No explicit sentinels; multiplies converted asset amount
+          by config.c_factor with floor rounding.
+      pool/src/pool/reserve.rs::Reserve::to_d_token_up:
+        time_dependent: No direct time logic.
+        sentinel_values: No explicit sentinels; converts amount by dividing by data.d_rate
+          with ceiling rounding.
+      pool/src/pool/reserve.rs::Reserve::to_d_token_down:
+        time_dependent: No direct time logic.
+        sentinel_values: No explicit sentinels; converts amount by dividing by data.d_rate
+          with floor rounding.
+      pool/src/pool/reserve.rs::Reserve::to_b_token_up:
+        time_dependent: No direct time logic.
+        sentinel_values: No explicit sentinels; converts amount by dividing by data.b_rate
+          with ceiling rounding.
+      pool/src/pool/reserve.rs::Reserve::to_b_token_down:
+        time_dependent: No direct time logic.
+        sentinel_values: No explicit sentinels; converts amount by dividing by data.b_rate
+          with floor rounding.
+  pool/src/pool/status.rs:
+    content_sha256: 733e7276fa4fdc1fc6520d2a859824aab826605f5e5c209adea7f613a1d53826
+    functions:
+      pool/src/pool/status.rs::execute_update_pool_status:
+        authorization: No caller auth check; callable with only contract env and reads/stores
+          pool config based on backstop data.
+        time_dependent: Uses current contract address to query backstop pool_data;
+          no timestamp/ledger-time logic.
+        sentinel_values: Status sentinels 6 and 4 always reject; admin 2 may become
+          5 if q4w_pct >= 0_7500000; admin 0 may become 3 if threshold < SCALAR_7
+          or q4w_pct >= 0_5000000; unset/other becomes 5 at q4w_pct >= 0_6000000,
+          3 at q4w_pct >= 0_3000000 or under-threshold, else 1.
+      pool/src/pool/status.rs::execute_set_pool_status:
+        authorization: No explicit auth enforced in this function despite admin-oriented
+          behavior; directly sets stored pool status if input/status constraints pass.
+        vector_params: None; single scalar pool_status input.
+        time_dependent: No timestamp/ledger-time logic; uses current contract address
+          only to fetch backstop pool_data.
+        sentinel_values: Accepted input statuses are 0,2,3,4; 0 requires threshold
+          >= SCALAR_7 and q4w_pct < 0_5000000, 2 and 3 require q4w_pct < 0_7500000,
+          4 always allowed, all other inputs panic with BadRequest.
+      pool/src/pool/status.rs::calc_pool_backstop_threshold:
+        authorization: Pure calculation helper with no auth.
+        vector_params: None; takes one PoolBackstopData reference, no vectors.
+        time_dependent: Not time-dependent.
+        sentinel_values: Uses SCALAR_7 to floor blnd/usdc balances and scale output,
+          divides by fixed threshold_pc = 10_000_000_000_000_000_000_000_000i128 (1e25),
+          and relies on saturating_mul to cap overflow rather than distinct overflow
+          sentinels.
+  pool/src/pool/submit.rs:
+    content_sha256: 094869f0c461728e2cf10e59a5c63e56ebf9466a9e7a1eba9578ee6dc355bd49
+    functions:
+      pool/src/pool/submit.rs::execute_submit:
+        authorization: No explicit auth check; rejects from/spender/to equal to current
+          contract address before loading pool/user state and executing transfers.
+        vector_params: 'Takes requests: Vec<Request>; passed to build_actions_from_request
+          for batched action construction.'
+        time_dependent: No direct time/ledger dependency; validation may consult auction
+          state and health calculations but no timestamp/deadline input.
+        sentinel_values: BadRequest if from/spender/to is current contract address;
+          use_allowance boolean switches allowance vs direct transfer path.
+      pool/src/pool/submit.rs::execute_submit_with_flash_loan:
+        authorization: No explicit auth check; rejects from equal to current contract
+          address, then performs flash-loan transfer and callback using from as caller.
+        vector_params: 'Takes requests: Vec<Request>; processed after pre-adding flash-loan
+          liabilities via build_actions_from_request.'
+        time_dependent: No direct time parameter; always enforces post-submit health
+          check and may be affected by auction-state validation inside validate_submit.
+        sentinel_values: BadRequest if from is current contract address; flash loan
+          callback passes fee sentinel 0; validate_submit is called with check_health
+          fixed to true.
+      pool/src/pool/submit.rs::validate_submit:
+        authorization: No caller authorization; validates pool/user state constraints,
+          including blocking users with an active liquidation auction.
+        vector_params: No vector parameters; inspects from_state.positions and previous
+          position count.
+        time_dependent: Indirectly state-dependent through storage::has_auction and
+          current oracle/position health calculation, but no explicit timestamp input.
+        sentinel_values: Health-factor floor sentinel 1_0000100 triggers InvalidHf
+          if under; also errors on AuctionInProgress and MinCollateralNotMet when
+          collateral_base is below pool.config.min_collateral.
+      pool/src/pool/submit.rs::handle_transfer_with_allowance:
+        authorization: Uses spender allowance by calling token.transfer_from with
+          the contract as spender authority; no separate auth check in this function.
+        vector_params: No vector parameters; iterates action transfer maps and aggregates
+          per-token net balances in a Map<Address,i128>.
+        time_dependent: Not time-dependent; purely computes and executes net token
+          transfers.
+        sentinel_values: 'Net balance sign is sentinel logic: amount < 0 pulls from
+          spender, amount > 0 sends from pool to to, amount == 0 does nothing.'
+      pool/src/pool/submit.rs::handle_transfers:
+        authorization: No explicit auth check; directly transfers tokens from spender
+          to pool and from pool to to without allowance path.
+        vector_params: No vector parameters; iterates action spender_transfer and
+          pool_transfer collections.
+        time_dependent: Not time-dependent; performs immediate token transfers only.
+        sentinel_values: No special sentinel constants; behavior is determined by
+          presence of transfer entries in the action maps.
+  pool/src/pool/user.rs:
+    content_sha256: 9564b5df93ce7d9891b2e75f78763244bdd9cb4273e91354e1ba565c36714b34
+    functions:
+      pool/src/pool/user.rs::Positions::env_default:
+        authorization: None; creates empty in-memory Positions from Env without caller
+          or address checks.
+        vector_params: No vector parameters; only Env reference input.
+        time_dependent: No explicit time or ledger-time dependence.
+        sentinel_values: Initializes liabilities, collateral, and supply as empty
+          maps; emptiness is the only sentinel state.
+      pool/src/pool/user.rs::Positions::effective_count:
+        authorization: None; pure read of local Positions lengths.
+        vector_params: No vector parameters.
+        time_dependent: No time dependence.
+        sentinel_values: Counts only liabilities and collateral; ignores supply positions,
+          and empty maps contribute 0.
+      pool/src/pool/user.rs::User::load:
+        authorization: None in this function; loads positions for the provided address
+          without verifying caller.
+        vector_params: No vector parameters.
+        time_dependent: No explicit time dependence.
+        sentinel_values: Uses storage::get_user_positions; absent data behavior is
+          delegated there rather than handled here.
+      pool/src/pool/user.rs::User::store:
+        authorization: None in this function; stores positions under self.address
+          without caller checks.
+        vector_params: No vector parameters.
+        time_dependent: No explicit time dependence.
+        sentinel_values: No sentinel handling beyond persisting current positions
+          as-is.
+      pool/src/pool/user.rs::User::has_liabilities:
+        authorization: None; read-only check on liabilities map.
+        vector_params: No vector parameters.
+        time_dependent: No time dependence.
+        sentinel_values: Returns false when liabilities map is empty, true otherwise.
+      pool/src/pool/user.rs::User::get_liabilities:
+        authorization: None; read-only lookup by reserve index.
+        vector_params: No vector parameters.
+        time_dependent: No time dependence.
+        sentinel_values: Missing reserve entry defaults to 0 via unwrap_or(0).
+      pool/src/pool/user.rs::User::add_liabilities:
+        authorization: None in this function; mutates user/reserve state without caller
+          checks.
+        vector_params: No vector parameters.
+        time_dependent: Indirectly time-dependent via update_d_emissions call before
+          balance change.
+        sentinel_values: amount must be >0 or panics with InvalidDTokenMintAmount;
+          missing prior balance is treated as 0.
+      pool/src/pool/user.rs::User::remove_liabilities:
+        authorization: None in this function; mutates user/reserve state without caller
+          checks.
+        vector_params: No vector parameters.
+        time_dependent: Indirectly time-dependent via update_d_emissions call before
+          balance change.
+        sentinel_values: amount must be >0 or panics with InvalidDTokenBurnAmount;
+          missing balance defaults to 0; negative result panics via require_nonnegative;
+          new_balance==0 removes the map entry.
+      pool/src/pool/user.rs::User::default_liabilities:
+        authorization: None in this function; comment says it should only be called
+          during default but no check is enforced here.
+        vector_params: No vector parameters.
+        time_dependent: Indirectly time-dependent because it calls remove_liabilities,
+          which updates emissions.
+        sentinel_values: Inherits remove_liabilities sentinels; computed b_rate_loss
+          is applied then b_rate is floored at 0 if it would go negative.
+      pool/src/pool/user.rs::User::get_collateral:
+        authorization: None; read-only lookup by reserve index.
+        vector_params: No vector parameters.
+        time_dependent: No time dependence.
+        sentinel_values: Missing reserve entry defaults to 0 via unwrap_or(0).
+      pool/src/pool/user.rs::User::add_collateral:
+        authorization: None in this function; mutates user/reserve state without caller
+          checks.
+        vector_params: No vector parameters.
+        time_dependent: Indirectly time-dependent via update_b_emissions call using
+          total supply before balance change.
+        sentinel_values: amount must be >0 or panics with InvalidBTokenMintAmount;
+          missing prior collateral is treated as 0.
+      pool/src/pool/user.rs::User::remove_collateral:
+        authorization: None in this function; mutates user/reserve state without caller
+          checks.
+        vector_params: No vector parameters.
+        time_dependent: Indirectly time-dependent via update_b_emissions call using
+          total supply before balance change.
+        sentinel_values: amount must be >0 or panics with InvalidBTokenBurnAmount;
+          missing balance defaults to 0; negative result panics via require_nonnegative;
+          new_balance==0 removes the map entry.
+      pool/src/pool/user.rs::User::get_supply:
+        authorization: None; read-only lookup by reserve index.
+        vector_params: No vector parameters.
+        time_dependent: No time dependence.
+        sentinel_values: Missing reserve entry defaults to 0 via unwrap_or(0).
+      pool/src/pool/user.rs::User::add_supply:
+        authorization: None in this function; mutates user/reserve state without caller
+          checks.
+        vector_params: No vector parameters.
+        time_dependent: Indirectly time-dependent via update_b_emissions call using
+          total supply before balance change.
+        sentinel_values: amount must be >0 or panics with InvalidBTokenMintAmount;
+          missing prior supply is treated as 0.
+      pool/src/pool/user.rs::User::remove_supply:
+        authorization: None in this function; mutates user/reserve state without caller
+          checks.
+        vector_params: No vector parameters.
+        time_dependent: Indirectly time-dependent via update_b_emissions call using
+          total supply before balance change.
+        sentinel_values: amount must be >0 or panics with InvalidBTokenBurnAmount;
+          missing balance defaults to 0; negative result panics via require_nonnegative;
+          new_balance==0 removes the map entry.
+      pool/src/pool/user.rs::User::get_total_supply:
+        authorization: None; pure read combining collateral and supply lookups.
+        vector_params: No vector parameters.
+        time_dependent: No time dependence.
+        sentinel_values: Missing collateral or supply entries each contribute 0 to
+          the sum.
+      pool/src/pool/user.rs::User::rm_positions:
+        authorization: None in this function; batch mutates user/pool positions without
+          caller checks.
+        vector_params: Takes two Map<Address,i128> collections, collateral_amounts
+          and liability_amounts, iterated entry-by-entry.
+        time_dependent: Indirectly time-dependent because downstream remove_collateral/remove_liabilities
+          update emissions.
+        sentinel_values: Only processes entries with amount >0; zero or negative amounts
+          are skipped entirely rather than erroring.
+      pool/src/pool/user.rs::User::add_positions:
+        authorization: None in this function; batch mutates user/pool positions without
+          caller checks.
+        vector_params: Takes two Map<Address,i128> collections, collateral_amounts
+          and liability_amounts, iterated entry-by-entry.
+        time_dependent: Indirectly time-dependent because downstream add_collateral/add_liabilities
+          update emissions.
+        sentinel_values: Only processes entries with amount >0; zero or negative amounts
+          are skipped entirely rather than erroring.
+      pool/src/pool/user.rs::User::update_d_emissions:
+        authorization: None; internal helper updates emissions for self.address without
+          access checks.
+        vector_params: No vector parameters.
+        time_dependent: Yes; delegates to emissions::update_emissions, which is emission-state
+          dependent and typically ledger-time sensitive.
+        sentinel_values: Uses reserve.config.index*2 as the debt emissions key; no
+          special sentinel handling in this wrapper.
+      pool/src/pool/user.rs::User::update_b_emissions:
+        authorization: None; internal helper updates emissions for self.address without
+          access checks.
+        vector_params: No vector parameters.
+        time_dependent: Yes; delegates to emissions::update_emissions, which is emission-state
+          dependent and typically ledger-time sensitive.
+        sentinel_values: Uses reserve.config.index*2+1 as the blend-token emissions
+          key; no special sentinel handling in this wrapper.
+  pool/src/storage.rs:
+    content_sha256: 0d5821be203774055a5058239941fec7184510ad4506fd898f1447413f48d396
+    functions:
+      pool/src/storage.rs::extend_instance:
+        time_dependent: extends instance storage TTL using fixed ledger threshold
+          and bump constants
+        sentinel_values: uses LEDGER_THRESHOLD_INSTANCE and LEDGER_BUMP_INSTANCE constants
+      pool/src/storage.rs::get_persistent_default:
+        time_dependent: if key exists, extends persistent TTL using provided bump_threshold
+          and bump_amount; otherwise returns default closure result
+        sentinel_values: missing key is sentinel for returning default value
+      pool/src/storage.rs::get_user_positions:
+        time_dependent: reads persistent user positions and bumps TTL with user thresholds
+          when present
+        sentinel_values: returns Positions::env_default(e) when no stored positions
+          exist
+      pool/src/storage.rs::set_user_positions:
+        time_dependent: writes persistent user positions and extends TTL with user
+          thresholds
+      pool/src/storage.rs::get_admin:
+        sentinel_values: panics if Admin instance key is absent via unwrap_optimized
+      pool/src/storage.rs::set_admin: {}
+      pool/src/storage.rs::set_name: {}
+      pool/src/storage.rs::get_backstop:
+        sentinel_values: panics if Backstop instance key is absent via unwrap_optimized
+      pool/src/storage.rs::set_backstop: {}
+      pool/src/storage.rs::get_blnd_token:
+        sentinel_values: panics if BLNDTkn instance key is absent via unwrap_optimized
+      pool/src/storage.rs::set_blnd_token: {}
+      pool/src/storage.rs::get_pool_config:
+        sentinel_values: panics if Config instance key is absent via unwrap_optimized
+      pool/src/storage.rs::set_pool_config: {}
+      pool/src/storage.rs::get_res_config:
+        time_dependent: extends persistent TTL with shared thresholds before returning
+          reserve config
+        sentinel_values: panics if reserve config for asset is absent via unwrap_optimized
+      pool/src/storage.rs::set_res_config:
+        time_dependent: writes persistent reserve config and extends TTL with shared
+          thresholds
+      pool/src/storage.rs::has_res:
+        sentinel_values: returns false when reserve config key is absent
+      pool/src/storage.rs::get_queued_reserve_set:
+        sentinel_values: panics if temporary queued reserve init for asset is absent
+          via unwrap_optimized
+      pool/src/storage.rs::has_queued_reserve_set:
+        sentinel_values: returns false when temporary queued reserve init key is absent
+      pool/src/storage.rs::set_queued_reserve_set:
+        time_dependent: writes temporary queued reserve init and extends TTL with
+          user thresholds
+      pool/src/storage.rs::del_queued_reserve_set:
+        sentinel_values: none; removes key without explicit existence check
+      pool/src/storage.rs::get_res_data:
+        time_dependent: extends persistent TTL with shared thresholds before returning
+          reserve data
+        sentinel_values: panics if reserve data for asset is absent via unwrap_optimized
+      pool/src/storage.rs::set_res_data:
+        time_dependent: writes persistent reserve data and extends TTL with shared
+          thresholds
+      pool/src/storage.rs::get_res_list:
+        vector_params: returns Vec<Address> reserve list
+        time_dependent: reads persistent reserve list and bumps TTL with shared thresholds
+          when present
+        sentinel_values: returns empty vec![e] when no reserve list exists
+      pool/src/storage.rs::push_res_list:
+        vector_params: mutates stored Vec<Address> by appending one asset
+        time_dependent: writes persistent reserve list and extends TTL with shared
+          thresholds
+        sentinel_values: panics with PoolError::BadRequest when len >= MAX_RESERVES;
+          returns new index len-1
+      pool/src/storage.rs::get_res_emis_data:
+        time_dependent: reads persistent emission data and bumps TTL with shared thresholds
+          when present
+        sentinel_values: returns None when reserve emission entry is absent
+      pool/src/storage.rs::set_res_emis_data:
+        time_dependent: writes persistent reserve emission data and extends TTL with
+          shared thresholds
+      pool/src/storage.rs::get_user_emissions:
+        time_dependent: reads persistent user emission data and bumps TTL with user
+          thresholds when present
+        sentinel_values: returns None when user emission entry is absent
+      pool/src/storage.rs::set_user_emissions:
+        time_dependent: none; writes persistent user emission data without TTL extension
+      pool/src/storage.rs::get_pool_emissions:
+        vector_params: returns Map<u32,u64>, not a vector
+        time_dependent: reads persistent pool emissions and bumps TTL with shared
+          thresholds when present
+        sentinel_values: returns empty map![e] when no pool emissions exist
+      pool/src/storage.rs::set_pool_emissions:
+        vector_params: accepts Map<u32,u64>, not a vector
+        time_dependent: writes persistent pool emissions and extends TTL with shared
+          thresholds
+      pool/src/storage.rs::get_auction:
+        sentinel_values: panics if temporary auction entry for (auction_type,user)
+          is absent via unwrap_optimized
+      pool/src/storage.rs::has_auction:
+        sentinel_values: returns false when temporary auction key is absent
+      pool/src/storage.rs::set_auction:
+        time_dependent: writes temporary auction data and extends TTL with shared
+          thresholds
+      pool/src/storage.rs::del_auction:
+        sentinel_values: none; removes key without explicit existence check
+  pool/src/testutils.rs:
+    content_sha256: e365a6dcc6ca34972325c00aeb816075ee3e1d54b4fafa642c30f8321dff86a2
+    functions:
+      pool/src/testutils.rs::create_pool:
+        authorization: No explicit auth; test helper registers PoolContract with generated
+          addresses and fixed constructor args.
+        vector_params: No vector parameters.
+        time_dependent: No time-dependent logic.
+        sentinel_values: Uses fixed init literals including name "teapot", 0_1000000u32,
+          4u32, and 1_0000000i128.
+      pool/src/testutils.rs::create_token_contract:
+        authorization: No explicit auth; initializes mock token with provided admin.
+        vector_params: No vector parameters.
+        time_dependent: No time-dependent logic.
+        sentinel_values: Initializes token with decimals 7, symbol "unit", and name
+          "test".
+      pool/src/testutils.rs::create_blnd_token:
+        authorization: No explicit auth; writes BLND token address into pool storage
+          via e.as_contract(pool_address).
+        vector_params: No vector parameters.
+        time_dependent: No time-dependent logic.
+        sentinel_values: No special sentinel values beyond delegating to create_token_contract
+          defaults.
+      pool/src/testutils.rs::create_mock_oracle:
+        authorization: No explicit auth; registers mock oracle and returns client.
+        vector_params: No vector parameters.
+        time_dependent: No time-dependent logic.
+        sentinel_values: No sentinel values.
+      pool/src/testutils.rs::create_mock_pool_factory:
+        authorization: No explicit auth; registers mock pool factory with preset init
+          metadata.
+        vector_params: No vector parameters.
+        time_dependent: No time-dependent logic.
+        sentinel_values: Uses zeroed 32-byte pool_hash and generated addresses for
+          backstop and blnd_id.
+      pool/src/testutils.rs::create_emitter:
+        authorization: No explicit auth; initializes emitter with supplied token/backstop
+          addresses.
+        vector_params: No vector parameters.
+        time_dependent: No time-dependent logic.
+        sentinel_values: No sentinel values.
+      pool/src/testutils.rs::create_backstop:
+        authorization: No explicit auth; sets pool on mock factory, registers backstop,
+          and writes backstop address into pool storage via e.as_contract(pool_address).
+        vector_params: Registers backstop with a single-entry vector mapping pool_address
+          to 40_000_000 * SCALAR_7.
+        time_dependent: No time-dependent logic.
+        sentinel_values: Uses generated backstop_id and fixed weight/credit seed 40_000_000
+          * SCALAR_7.
+      pool/src/testutils.rs::create_comet_lp_pool:
+        authorization: No explicit auth in helper; mints mock tokens to provided admin
+          and initializes comet pool with admin.
+        vector_params: Passes vectors for 2 tokens [BLND, USDC], weights [0_8000000,
+          0_2000000], and initial balances [1_000_0000000, 25_0000000].
+        time_dependent: No time-dependent logic.
+        sentinel_values: Uses fixed swap fee 0_0030000, BLND amount 1_000_0000000,
+          USDC amount 25_0000000, and 80/20 weights.
+      pool/src/testutils.rs::create_flashloan_receiver:
+        authorization: No explicit auth; registers flash loan receiver contract and
+          returns client.
+        vector_params: No vector parameters.
+        time_dependent: No time-dependent logic.
+        sentinel_values: No sentinel values.
+      pool/src/testutils.rs::default_reserve:
+        authorization: No auth logic; pure test data constructor.
+        vector_params: No vector parameters.
+        time_dependent: Returns ReserveData with last_time set to 0; otherwise no
+          dynamic time logic.
+        sentinel_values: Uses fixed defaults including decimals 7, factors 0_7500000/0_9500000,
+          rates 0_0100000/0_0500000/0_5000000/1_5000000, reactivity 0_0000020, collateral_cap
+          1000000000000000000, b_supply 100_0000000, d_supply 75_0000000, backstop_credit
+          0, and scalar SCALAR_7.
+      pool/src/testutils.rs::default_reserve_meta:
+        authorization: No auth logic; pure test data constructor.
+        vector_params: No vector parameters.
+        time_dependent: Returns ReserveData with last_time set to 0; otherwise no
+          dynamic time logic.
+        sentinel_values: Uses fixed defaults including decimals 7, factors 0_7500000/0_9500000,
+          rates 0_0100000/0_0500000/0_5000000/1_5000000, reactivity 0_0000020, collateral_cap
+          1000000000000000000, b_supply 100_0000000, d_supply 75_0000000, and backstop_credit
+          0.
+      pool/src/testutils.rs::create_reserve:
+        authorization: No explicit auth; mutates pool reserve storage inside e.as_contract(pool_address)
+          and mints underlying tokens with mock_all_auths().
+        vector_params: No vector parameters.
+        time_dependent: No time-dependent branching; uses supplied reserve_data values,
+          including any last_time, as-is.
+        sentinel_values: Computes mint amount as b_supply*b_rate/SCALAR_12 - d_supply*d_rate/SCALAR_12
+          + backstop_credit; no hardcoded sentinels besides SCALAR_12.
+  pool/src/validator.rs:
+    content_sha256: 5cddca0e715af532a3946816ca8c8189d2ddd65edac8c43547eac35d0420f44a
+    functions:
+      pool/src/validator.rs::require_nonnegative:
+        authorization: none; callable utility with no caller/role checks
+        time_dependent: none; no ledger/block/time access
+        sentinel_values: panics with PoolError::NegativeAmountError if amount is negative;
+          zero is allowed
+  test-suites/fuzz/fuzz_targets/fuzz_pool_general.rs:
+    content_sha256: a8b3d48745dc9f3309b1d5a31068c3b07d41e88cab76f0b4c45e2664f1a8c2e3
+    functions:
+      test-suites/fuzz/fuzz_targets/fuzz_pool_general.rs::Command::run:
+        authorization: None; dispatches fuzz command variants to their underlying
+          run methods using fixed user indices 1 for Sam and 2 for Merry, or directly
+          for PassTime.
+        vector_params: No vector parameters.
+        time_dependent: Yes; can invoke PassTime commands and may dispatch to underlying
+          time-sensitive pool actions depending on variant.
+        sentinel_values: Uses hardcoded user index sentinels 1 and 2 to select Sam
+          vs Merry.
+      test-suites/fuzz/fuzz_targets/fuzz_pool_general.rs::TestFixture<'_>::assert_invariants:
+        authorization: None; reads pool state and asserts a global solvency invariant.
+        vector_params: No vector parameters; iterates over pool_fixture.reserves.
+        time_dependent: No direct time input or clock use; checks current pool state
+          only.
+        sentinel_values: Asserts supply > liabilities; uses pool index 0 and passes
+          false to load_reserve.
+      test-suites/fuzz/fuzz_targets/fuzz_pool_general.rs::TestFixture<'_>::assert_user_invariants:
+        authorization: None; checks a specified user's position health without access
+          control.
+        vector_params: No vector parameters; fetches positions internally for the
+          provided user.
+        time_dependent: No direct time input or clock use; evaluates current position
+          state only.
+        sentinel_values: Asserts health factor > scalar; uses pool index 0 as the
+          checked pool.
+  test-suites/fuzz/lib.rs:
+    content_sha256: 1bfe8193a3c730339aa146ba2b5bfd4ec4daca06ce660754f8fcc321765f1c09
+    functions:
+      test-suites/fuzz/lib.rs::verify_contract_result:
+        authorization: No caller authorization; inspects a contract call result and
+          panics only when the error is WasmVm/InvalidAction.
+        time_dependent: No.
+        sentinel_values: Treats ScErrorType::WasmVm + ScErrorCode::InvalidAction as
+          the panic sentinel; logs up to 10 recent events.
+      test-suites/fuzz/lib.rs::PassTime::run:
+        authorization: No authorization checks; uses the provided fixture to advance
+          ledger time.
+        time_dependent: Yes; advances Env timestamp by self.amount seconds via fixture.jump.
+      test-suites/fuzz/lib.rs::PassTimeAndBlocks::run:
+        authorization: No authorization checks; uses the provided fixture to advance
+          ledger time and sequence.
+        time_dependent: Yes; advances timestamp and block sequence by self.amount
+          via fixture.jump_with_sequence.
+      test-suites/fuzz/lib.rs::Supply::run:
+        authorization: Submits the pool request with the selected user passed as all
+          three auth-related addresses; no extra local auth logic.
+        vector_params: Builds a single-element Soroban vec<Request> containing one
+          SupplyCollateral request.
+        time_dependent: No direct time logic.
+        sentinel_values: Uses pool index 0; request_type sentinel is RequestType::SupplyCollateral
+          as u32.
+      test-suites/fuzz/lib.rs::Withdraw::run:
+        authorization: Submits the pool request with the selected user passed as all
+          three auth-related addresses; no extra local auth logic.
+        vector_params: Builds a single-element Soroban vec<Request> containing one
+          WithdrawCollateral request.
+        time_dependent: No direct time logic.
+        sentinel_values: Uses pool index 0; request_type sentinel is RequestType::WithdrawCollateral
+          as u32.
+      test-suites/fuzz/lib.rs::Borrow::run:
+        authorization: Submits the pool request with the selected user passed as all
+          three auth-related addresses; no extra local auth logic.
+        vector_params: Builds a single-element Soroban vec<Request> containing one
+          Borrow request.
+        time_dependent: No direct time logic.
+        sentinel_values: Uses pool index 0; request_type sentinel is RequestType::Borrow
+          as u32.
+      test-suites/fuzz/lib.rs::Repay::run:
+        authorization: Submits the pool request with the selected user passed as all
+          three auth-related addresses; no extra local auth logic.
+        vector_params: Builds a single-element Soroban vec<Request> containing one
+          Repay request.
+        time_dependent: No direct time logic.
+        sentinel_values: Uses pool index 0; request_type sentinel is RequestType::Repay
+          as u32.
+      test-suites/fuzz/lib.rs::ClaimPool::run:
+        authorization: Calls pool.try_claim with the selected user as claimant and
+          recipient; no extra local auth logic.
+        vector_params: Passes a Soroban vec of i32 values [0, 3] as the claim range/index
+          parameter.
+        time_dependent: No direct time logic.
+        sentinel_values: Uses pool index 0 and hard-coded claim vector values 0 and
+          3.
+      test-suites/fuzz/lib.rs::ClaimBackstop::run:
+        authorization: Calls backstop.try_claim with the selected user as claimant
+          and recipient; no extra local auth logic.
+        vector_params: Passes a single-element Soroban vec containing pool_fixture.pool.address.clone().
+        time_dependent: No direct time logic.
+        sentinel_values: Uses pool index 0 as the claimed pool source.
+  test-suites/src/assertions.rs:
+    content_sha256: c277056ff0b3545aec711184f57a421ee46097527df3ff59f01b02d85d1724e5
+    functions:
+      test-suites/src/assertions.rs::assert_approx_eq_abs:
+        authorization: none; public test helper with no caller or permission checks
+        vector_params: none; takes scalar params a, b, delta only
+        time_dependent: no; pure comparison/assertion with no time or ledger inputs
+        sentinel_values: uses delta as tolerance bound and panics unless a is strictly
+          within (b - delta, b + delta), excluding equality at the bounds
+      test-suites/src/assertions.rs::assert_approx_eq_rel:
+        authorization: none; public test helper with no caller or permission checks
+        vector_params: none; takes scalar i128 params a, b, delta only
+        time_dependent: no; computes relative tolerance from inputs and constant SCALAR_7
+          only
+        sentinel_values: delta is a fixed-point percentage scaled by SCALAR_7; derives
+          abs_delta = b.fixed_mul_floor(delta, SCALAR_7).unwrap() and then applies
+          strict open-interval tolerance via assert_approx_eq_abs
+  test-suites/src/backstop.rs:
+    content_sha256: fb037a0fa204d7e0ac37c97f66b846f4a12b2ae86dfe58c1f90dc489f6ed94f7
+    functions:
+      test-suites/src/backstop.rs::create_backstop:
+        authorization: No explicit authorization or caller check; publicly registers
+          a contract at the provided contract_id in the supplied Env.
+        vector_params: 'Accepts drop_list: &Vec<(Address, i128)>, cloned and passed
+          as an initialization argument during registration.'
+        time_dependent: Not time-dependent; no ledger time, block height, or temporal
+          condition is referenced.
+        sentinel_values: 'Uses wasm: bool as a branch selector between WASM bytecode
+          and BackstopContract registration; no other sentinel constants or magic
+          values.'
+  test-suites/src/emitter.rs:
+    content_sha256: d22268feeef474dad85ca1c1150a65871ea6dabbb37781a2e7c216c7a1cb084f
+    functions:
+      test-suites/src/emitter.rs::create_emitter:
+        authorization: none; public helper takes only &Env and registers a contract
+          without caller/owner checks
+        sentinel_values: none; no special constants or sentinel arguments/returns
+  test-suites/src/lib.rs:
+    content_sha256: 5018d2d78c72bd9ec6d99d33e8642efda70b085718c5897c2a217ada92646363
+    functions: {}
+  test-suites/src/liquidity_pool.rs:
+    content_sha256: bf80c64cd5aa6140fa8e6e8271af44067d87bca41e99001514b9e8d9954c6559
+    functions:
+      test-suites/src/liquidity_pool.rs::create_lp_pool:
+        authorization: Takes an admin address and comments require it be admin of
+          both token contracts; no explicit auth checks in this helper beyond passing
+          admin to mint and pool init.
+        vector_params: 'Builds three vectors for init: token addresses [token_1, token_2],
+          weights [0_8000000, 0_2000000], and initial balances [1_000_0000000, 25_0000000].'
+        time_dependent: No time-dependent logic.
+        sentinel_values: 'Uses fixed constants: token_1 mint/deposit 1_000_0000000,
+          token_2 mint/deposit 25_0000000, weights 0_8000000/0_2000000, and swap fee
+          0_0030000.'
+  test-suites/src/moderc3156.rs:
+    content_sha256: 4f69162dc1ffc49421283c9988b4cd5ee58ddcd6d06dd2f3875de83baee7c1e4
+    functions:
+      test-suites/src/moderc3156.rs::create_flashloan_receiver:
+        authorization: None; publicly deploys and registers a receiver contract in
+          the provided Env without caller checks.
+        vector_params: None; takes only &Env and returns an Address plus client.
+        time_dependent: No; behavior does not read ledger time, sequence, or deadlines.
+        sentinel_values: Generates a fresh Address via Address::generate; no explicit
+          sentinel constants or special-case values.
+  test-suites/src/oracle.rs:
+    content_sha256: 03dc735ad54763fce732fe6499e504af67d1f224bbc577557b429b389874b2c7
+    functions:
+      test-suites/src/oracle.rs::create_mock_oracle:
+        authorization: none; publicly creates a generated contract address, registers
+          the mock oracle contract, and instantiates a client
+  test-suites/src/pool.rs:
+    content_sha256: 559fa691064c1299401d56beb51e5e61820d38532526efd2679390d47c6e276c
+    functions:
+      test-suites/src/pool.rs::default_reserve_metadata:
+        authorization: none; public helper with no caller/auth checks
+        time_dependent: no time-dependent logic
+        sentinel_values: returns fixed ReserveConfig constants including index=0,
+          enabled=true, decimals=7, collateral_cap=1000000000000000000, and rate/utilization
+          factors such as c_factor/l_factor/util=0_7500000 and max_util=0_9500000
+  test-suites/src/pool_factory.rs:
+    content_sha256: 5ce8c71f8bb1c8254ea5bef284274d5781c39b24bc92644c816af8ec52762936
+    functions:
+      test-suites/src/pool_factory.rs::create_pool_factory:
+        authorization: None; public test helper registers a contract/client in the
+          provided Env without caller checks.
+        vector_params: None; takes Env, Address, bool, and PoolInitMeta only.
+        time_dependent: No explicit time-dependent logic; behavior depends only on
+          the wasm boolean flag.
+        sentinel_values: Boolean sentinel `wasm` selects between registering the imported
+          WASM contract or `MockPoolFactory`.
+  test-suites/src/setup.rs:
+    content_sha256: b841aa2c27e36934ad9d568962306efeb216dac2855dc5906eeb147e158d948f
+    functions:
+      test-suites/src/setup.rs::create_fixture_with_data:
+        authorization: No explicit authorization checks; test helper performs privileged
+          fixture setup and submits pool actions using cloned user `frodo`.
+        vector_params: 'Builds several Soroban vectors internally: LP join amounts,
+          reserve emissions config, and three `SVec<Request>` batches for STABLE/WETH/XLM
+          supply+borrow submits; takes no vector parameter.'
+        time_dependent: Yes; calls `fixture.jump(60)`, distributes/gulps emissions,
+          later `fixture.jump(60 * 60)`, so resulting fixture state depends on simulated
+          time progression.
+        sentinel_values: Uses `i128::MAX` as WETH collateral_cap sentinel and `None`
+          in `backstop.add_reward`; also hardcodes pool status `3` and emission/reserve
+          type integers.
+  test-suites/src/snapshot.rs:
+    content_sha256: 8ecfaa8fb14f97b76e1d25c445bfc4dd60e9b653e8c2b1b7bc1ef23ff814b5c1
+    functions:
+      test-suites/src/snapshot.rs::env_from_snapshot:
+        authorization: none; public helper creates and returns a test Env from a local
+          ledger snapshot file with no caller checks
+        time_dependent: loads a fixed snapshot file at a specific ledger state and
+          disables capture_snapshot_at_drop; no runtime time input
+        sentinel_values: uses fixed path ./src/mainnet-55261759-snapshot.json and
+          sets capture_snapshot_at_drop to false
+  test-suites/src/token.rs:
+    content_sha256: c524bbdc15e92fa138a868f9c0bfb01264c7fd4a4092842b4f3c1fc609b94532
+    functions:
+      test-suites/src/token.rs::create_stellar_token:
+        authorization: No internal caller authorization checks; accepts an admin address
+          parameter and uses it to register the stellar asset contract and set admin.
+        time_dependent: No time- or ledger-dependent logic.
+      test-suites/src/token.rs::create_token:
+        authorization: No internal caller authorization checks; accepts an admin address
+          parameter and uses it to initialize the token and set admin.
+        time_dependent: No time- or ledger-dependent logic.
+        sentinel_values: Uses fixed token name "test token" during initialization;
+          otherwise no sentinel values.

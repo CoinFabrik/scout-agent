@@ -1,0 +1,31 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T20:33:33Z'
+project_root: /Users/josegarcia/Desktop/scout-agent/benchmark/example_contract
+model: openai:gpt-5.4
+llm_mode: creative
+files:
+  src/lib.rs:
+    content_sha256: d62026370f681202e4da69b3aa8edc1bd2891ab5db0bcaf691970398b942aa5e
+    functions:
+      src/lib.rs::CommunityTreasury::initialize:
+        authorization: No auth check; callable by anyone until Admin already exists,
+          then panics on re-initialization.
+        time_dependent: No time or ledger dependence.
+        sentinel_values: Uses existing Admin key as initialization sentinel; panics
+          if present.
+      src/lib.rs::CommunityTreasury::fund_treasury:
+        authorization: No auth check; any caller can increase stored Vault balance.
+        time_dependent: No time or ledger dependence.
+        sentinel_values: Missing Vault defaults to 0 via unwrap_or(0).
+      src/lib.rs::CommunityTreasury::distribute_rewards:
+        authorization: Requires stored Admin address auth via require_auth; panics
+          if not initialized because Admin is expected.
+        vector_params: 'Accepts recipients: Vec<Address>; panics if empty; duplicate
+          addresses are collapsed through a Map so only unique recipients are processed.'
+        time_dependent: No time or ledger dependence; reward amount depends on recipients.len().
+        sentinel_values: Empty recipients causes panic; missing Admin triggers expect("not
+          init"); missing Vault defaults to 0; panics on insufficient funds.
+      src/lib.rs::CommunityTreasury::get_treasury_balance:
+        authorization: No auth check; publicly reads Vault balance.
+        time_dependent: No time or ledger dependence.
+        sentinel_values: Missing Vault defaults to 0 via unwrap_or(0).
