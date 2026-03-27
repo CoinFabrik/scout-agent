@@ -339,7 +339,50 @@ def build_readonly_tools(
         except ValueError as exc:
             return str(exc)
 
-    return [read_file, grep]
+    @tool("ls")
+    def ls(
+        path: str | None = None,
+    ) -> str:
+        """List files and subdirectories in a directory inside the allowed scope.
+
+        Use this to discover the project structure.
+        `path` must be an absolute path inside the allowed scope, or omit it to use the default scope.
+        """
+        try:
+            resolved_path = resolve_in_scope(path, field_name="path")
+            if not resolved_path.is_dir():
+                return f"Not a directory: {resolved_path}"
+            
+            items = []
+            for item in sorted(resolved_path.iterdir()):
+                prefix = "dir " if item.is_dir() else "file"
+                items.append(f"{prefix} {item.name}")
+            return "\n".join(items) if items else "Empty directory."
+        except ValueError as exc:
+            return str(exc)
+
+    @tool("glob")
+    def glob_tool(
+        pattern: str,
+        path: str | None = None,
+    ) -> str:
+        """Find files matching a glob pattern inside the allowed scope.
+
+        Use this to find specific file types or files in nested directories.
+        `pattern` is a standard glob (e.g., '**/*.rs').
+        `path` must be an absolute path inside the allowed scope, or omit it to search from the project root.
+        """
+        try:
+            resolved_path = resolve_in_scope(path, field_name="path")
+            matches = []
+            for match in sorted(resolved_path.glob(pattern)):
+                if match.is_file():
+                    matches.append(match.resolve().as_posix())
+            return "\n".join(matches) if matches else "No matches found."
+        except ValueError as exc:
+            return str(exc)
+
+    return [read_file, grep, ls, glob_tool]
 
 
 class _AgentReadPolicy:

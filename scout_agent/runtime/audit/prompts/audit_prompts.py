@@ -55,10 +55,11 @@ def build_expert_system_prompt(
         ).rstrip(),
         f"## Scope\n\nProject root (absolute): {project_root.as_posix()}\n\n"
         "Instructions for paths:\n"
-        "1. All tool calls (read_file, grep) MUST use absolute paths starting from the project root above.\n"
+        "1. All tool calls (read_file, grep, ls, glob) MUST use absolute paths starting from the project root above.\n"
         "2. All reported finding 'location' fields MUST use relative paths from the project root (e.g., 'src/lib.rs:10').\n\n"
         "Tool constraints:\n"
         "- `read_file` limit: Maximum 500 lines. Reads MUST be sequential per file. Your next read for a file must start at the offset where your previous read ended. Overlapping or repeated reads are blocked to prevent loops.\n"
+        "- `ls` and `glob`: Use these to discover the project structure and find relevant files within the allowed scope.\n"
         f"- `grep` budget: You have a total budget of {agent_grep_limit} `grep` calls (regular expressions supported). Use them selectively to find candidate files, then switch to `read_file` for detailed analysis. If you exceed this budget, your session will be terminated.",
     ]
 
