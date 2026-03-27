@@ -62,7 +62,7 @@ fn transfer_batch(transfers: Vec<(Address, i128)>) {
 2. Use only the provided read-only tools and the repo-scoped backend.
 3. Stay within the listed in-scope production Rust files.
 4. Report only concrete findings supported by code evidence.
-5. Use the official `read_file` tool with `limit=100` for code reads. Request additional windows explicitly when needed.
+5. Use the official `read_file` tool for code reads. Reads MUST be sequential per file: your next read MUST start where the previous one ended. Overlapping reads are blocked to prevent loops.
 6. Pass absolute paths to `read_file` and to the optional `path` argument on `grep`.
 
 ## Output Contract
@@ -78,5 +78,5 @@ fn transfer_batch(transfers: Vec<(Address, i128)>) {
 - Do not omit `pattern` from any finding.
 
 ## Available Tools
-- `read_file` — read an in-scope file with explicit `offset` and `limit` parameters. Use absolute paths. Prefer `limit=100`.
+- `read_file` — read an in-scope file with explicit `offset` and `limit` parameters. Use absolute paths. Reads MUST be sequential per file.
 - `grep` — search across the in-scope Rust files. If you pass `path`, it must be absolute.

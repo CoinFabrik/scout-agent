@@ -209,11 +209,9 @@ def build_readonly_tools(
 
         Use this to inspect the actual contents of a file when you already have a likely relevant path.
         `file_path` must be an absolute path inside the allowed scope.
-        `limit` must be between 100 and 500 lines. Requests below 100 will be automatically increased.
-        Prefer reading enough context to answer the question in one pass.
-        Avoid many adjacent or heavily overlapping reads from the same file.
-        If you need more context, increase `limit` substantially instead of shifting `offset` by 1.
-        Do not repeat the exact same `(file_path, offset, limit)` span.
+        `limit` must be between 1 and 500 lines.
+        Reads MUST be sequential for each file. Your next read for a specific file must start at the offset where the previous read for that file ended (or later).
+        Overlapping or repeated reads are blocked to prevent context loops.
         Use `grep` when you need to locate candidate files or matching regions first.
         """
         if offset < 0:
@@ -223,9 +221,6 @@ def build_readonly_tools(
                 "`offset` must be >= 0.",
                 "Provide a non-negative offset.",
             )
-        
-        if limit < MIN_SINGLE_READ_LIMIT:
-            limit = MIN_SINGLE_READ_LIMIT
 
         if limit > MAX_SINGLE_READ_LIMIT:
             policy_guard.record_error("INVALID_LIMIT")
@@ -260,12 +255,14 @@ def build_readonly_tools(
                     policy_guard.record_error(code)
                 return rendered
 
-            with read_policy.lock:
+            actual_lines_read = len(rendered.splitlines())
 
+            with read_policy.lock:
                 read_policy.record_success(
                     file_path=resolved_path,
                     offset=offset,
                     limit=limit,
+                    actual_lines_read=actual_lines_read,
                 )
             policy_guard.record_success()
             return rendered
@@ -350,6 +347,7 @@ class _AgentReadPolicy:
         self.max_unique_files = max_unique_files
         self.read_files: set[str] = set()
         self.read_spans: set[tuple[str, int, int]] = set()
+        self.file_high_water_mark: dict[str, int] = {}
         self.lock = Lock()
 
     def check_read_allowed(
@@ -361,17 +359,17 @@ class _AgentReadPolicy:
         policy_guard: _ConsecutivePolicyGuard,
     ) -> str | None:
         normalized_path = file_path.as_posix()
-        span = (normalized_path, offset, limit)
+        high_water_mark = self.file_high_water_mark.get(normalized_path, 0)
 
-        if span in self.read_spans:
-            policy_guard.record_error("SPAN_ALREADY_READ")
+        if offset < high_water_mark:
+            policy_guard.record_error("REDUNDANT_READ")
             return _error(
-                "SPAN_ALREADY_READ",
+                "REDUNDANT_READ",
                 (
-                    "This exact file span was already read. "
-                    f"file_path={normalized_path}, offset={offset}, limit={limit}."
+                    f"You already read this file up to offset {high_water_mark}. "
+                    "To avoid redundant context and prevent loops, your next read MUST start at or after that offset."
                 ),
-                "Change `offset` or `limit`, or use `grep` to find a different location. Do not retry the same span.",
+                f"Set `offset` to {high_water_mark} or greater, or use `grep` to find a different location.",
             )
 
         if self.max_unique_files == 0:
@@ -399,10 +397,15 @@ class _AgentReadPolicy:
         file_path: Path,
         offset: int,
         limit: int,
+        actual_lines_read: int,
     ) -> None:
         normalized_path = file_path.as_posix()
         self.read_files.add(normalized_path)
         self.read_spans.add((normalized_path, offset, limit))
+        
+        new_mark = offset + actual_lines_read
+        if new_mark > self.file_high_water_mark.get(normalized_path, 0):
+            self.file_high_water_mark[normalized_path] = new_mark
 
 
 class _AgentGrepPolicy:
