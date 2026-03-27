@@ -1,0 +1,575 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T19:36:05Z'
+project_root: /home/francis/Repos/scout-agent/benchmark/2025-10-reflector-21676f3d353ed72e53d53ee9a3538542221a1cb2
+model: anthropic:claude-opus-4-6
+llm_mode: creative
+files:
+  beam-contract/src/cost.rs:
+    content_sha256: 8c64a9f40b79da378a4bd2fb60b47b015e4600ce8cee2d5be9d083044c8db578
+    functions:
+      beam-contract/src/cost.rs::set_costs_config:
+        vector_params: 'costs: Vec<u64> storing invocation cost rates indexed by InvocationComplexity
+          enum variants (NModifier=0, Price=1, Twap=2, CrossPrice=3, CrossTwap=4)'
+      beam-contract/src/cost.rs::load_costs_config:
+        vector_params: Returns Vec<u64> of cost rates indexed by InvocationComplexity;
+          defaults to [2_000_000, 10_000_000, 15_000_000, 20_000_000, 30_000_000]
+          if not set in storage
+        sentinel_values: Returns a hardcoded default Vec [2_000_000, 10_000_000, 15_000_000,
+          20_000_000, 30_000_000] when storage key "cost" is absent
+      beam-contract/src/cost.rs::charge_invocation_fee:
+        sentinel_values: Returns early (no charge) if fee_config is FeeConfig::None
+          or if the estimated cost is <= 0
+      beam-contract/src/cost.rs::estimate_invocation_cost:
+        sentinel_values: Returns 0 when fee_config is FeeConfig::None, when the base
+          cost from the costs vector is < 1, or when the cost entry is missing (unwrap_or_default);
+          uses SCALE constant 10_000_000 for period modifier arithmetic
+  beam-contract/src/lib.rs:
+    content_sha256: fc918f5a53bfb94514d6bf7ad2565a977e7d54b0bf8974fc07f326131db212af
+    functions:
+      beam-contract/src/lib.rs::BeamOracleContract::base: {}
+      beam-contract/src/lib.rs::BeamOracleContract::decimals: {}
+      beam-contract/src/lib.rs::BeamOracleContract::resolution: {}
+      beam-contract/src/lib.rs::BeamOracleContract::history_retention_period:
+        sentinel_values: Returns None if history retention period is not configured.
+      beam-contract/src/lib.rs::BeamOracleContract::cache_size: {}
+      beam-contract/src/lib.rs::BeamOracleContract::assets: {}
+      beam-contract/src/lib.rs::BeamOracleContract::last_timestamp:
+        time_dependent: Returns the timestamp of the most recent price update.
+      beam-contract/src/lib.rs::BeamOracleContract::version: {}
+      beam-contract/src/lib.rs::BeamOracleContract::expires:
+        time_dependent: Returns the expiration timestamp for a given asset.
+        sentinel_values: Returns None if the asset is not supported.
+      beam-contract/src/lib.rs::BeamOracleContract::extend_asset_ttl:
+        authorization: Requires sponsor address authorization (implied by transfer
+          of tokens); panics if asset is not supported or retention config is malformed/missing.
+        sentinel_values: Hardcoded 0 passed as the last argument to the underlying
+          extend_asset_ttl call.
+      beam-contract/src/lib.rs::BeamOracleContract::fee_config: {}
+      beam-contract/src/lib.rs::BeamOracleContract::invocation_costs: {}
+      beam-contract/src/lib.rs::BeamOracleContract::estimate_cost: {}
+      beam-contract/src/lib.rs::BeamOracleContract::admin:
+        sentinel_values: Returns None if no admin is set.
+      beam-contract/src/lib.rs::BeamOracleContract::price:
+        authorization: Requires caller.require_auth(); charges an invocation fee from
+          caller with InvocationComplexity::Price.
+        time_dependent: Looks up price data at a specific user-supplied timestamp.
+        sentinel_values: Returns None if no price record is found for the given asset
+          and timestamp.
+      beam-contract/src/lib.rs::BeamOracleContract::lastprice:
+        authorization: Requires caller.require_auth(); charges an invocation fee from
+          caller with InvocationComplexity::Price.
+        time_dependent: Returns the most recent price record for the asset.
+        sentinel_values: Returns None if asset is not supported.
+      beam-contract/src/lib.rs::BeamOracleContract::prices:
+        authorization: Requires caller.require_auth(); charges an invocation fee from
+          caller with InvocationComplexity::Price scaled by records count.
+        time_dependent: Returns last N historical price records for a given asset.
+        sentinel_values: Returns None if asset is not supported.
+      beam-contract/src/lib.rs::BeamOracleContract::x_last_price:
+        authorization: Requires caller.require_auth(); charges an invocation fee from
+          caller with InvocationComplexity::CrossPrice.
+        time_dependent: Returns the most recent cross price for the asset pair.
+        sentinel_values: Returns None if no records found for the quoted assets.
+      beam-contract/src/lib.rs::BeamOracleContract::x_price:
+        authorization: Requires caller.require_auth(); charges an invocation fee from
+          caller with InvocationComplexity::CrossPrice.
+        time_dependent: Looks up cross price (base/quote) at a specific user-supplied
+          timestamp.
+        sentinel_values: Returns None if no records found for the quoted assets at
+          the given timestamp.
+      beam-contract/src/lib.rs::BeamOracleContract::x_prices:
+        authorization: Requires caller.require_auth(); charges an invocation fee from
+          caller with InvocationComplexity::CrossPrice scaled by records count.
+        time_dependent: Returns last N cross price records for the asset pair.
+        sentinel_values: Returns None if no records found for the quoted assets.
+      beam-contract/src/lib.rs::BeamOracleContract::twap:
+        authorization: Requires caller.require_auth(); charges an invocation fee from
+          caller with InvocationComplexity::Twap.
+        time_dependent: Computes time-weighted average price over N recent price records.
+        sentinel_values: Returns None if the asset is not supported.
+      beam-contract/src/lib.rs::BeamOracleContract::x_twap:
+        authorization: Requires caller.require_auth(); charges an invocation fee from
+          caller with InvocationComplexity::CrossTwap scaled by records count.
+        time_dependent: Computes time-weighted average cross price over N recent records
+          for the asset pair.
+        sentinel_values: Returns None if the assets are not supported.
+      beam-contract/src/lib.rs::BeamOracleContract::config:
+        authorization: Requires admin authorization (enforced inside PriceOracleContractBase::config);
+          panics if not authorized or already initialized.
+        sentinel_values: Hardcoded 0 passed as the last argument to the underlying
+          config call.
+      beam-contract/src/lib.rs::BeamOracleContract::set_cache_size:
+        authorization: Requires admin authorization (enforced inside PriceOracleContractBase::set_cache_size);
+          panics if not authorized.
+      beam-contract/src/lib.rs::BeamOracleContract::add_assets:
+        authorization: Requires admin authorization (enforced inside PriceOracleContractBase::add_assets);
+          panics if not authorized, duplicate assets, or limit exceeded.
+        vector_params: "assets: Vec<Asset> \u2014 list of assets to add to the quoted\
+          \ assets list."
+        sentinel_values: Hardcoded 0 passed as the last argument to the underlying
+          add_assets call.
+      beam-contract/src/lib.rs::BeamOracleContract::set_history_retention_period:
+        authorization: Requires admin authorization (enforced inside PriceOracleContractBase::set_history_retention_period);
+          panics if not authorized.
+        time_dependent: Sets the history retention period (in seconds) for price records.
+      beam-contract/src/lib.rs::BeamOracleContract::set_fee_config:
+        authorization: Requires admin authorization (enforced inside PriceOracleContractBase::set_fee_config);
+          panics if not authorized or not initialized.
+        sentinel_values: Hardcoded 0 passed as the last argument to the underlying
+          set_fee_config call.
+      beam-contract/src/lib.rs::BeamOracleContract::set_invocation_costs_config:
+        authorization: Requires admin authorization (enforced inside set_costs_config);
+          panics if not authorized or not initialized.
+        vector_params: "config: Vec<u64> \u2014 invocation cost amounts for each invocation\
+          \ complexity category."
+      beam-contract/src/lib.rs::BeamOracleContract::set_price:
+        authorization: Requires admin authorization (enforced inside PriceOracleContractBase::set_price);
+          panics if not authorized or snapshot is invalid.
+        time_dependent: Records a price feed snapshot at the given timestamp.
+      beam-contract/src/lib.rs::BeamOracleContract::update_contract:
+        authorization: Requires admin authorization (enforced inside PriceOracleContractBase::update_contract);
+          panics if not authorized.
+  oracle/src/assets.rs:
+    content_sha256: 0f59c21fec841bf0d949b77f1d4ad3b6d344a6f4b551e9742c7d92cc2dea384c
+    functions:
+      oracle/src/assets.rs::get_expiration_timestamp:
+        time_dependent: Computes expiration timestamp by adding initial_expiration_period
+          (converted from days to milliseconds) to the current ledger timestamp; returns
+          0 if initial_expiration_period is 0.
+        sentinel_values: Returns 0u64 when initial_expiration_period is 0, indicating
+          no expiration.
+      oracle/src/assets.rs::load_all_assets:
+        sentinel_values: Returns an empty Vec<Asset> if the ASSETS_KEY is not found
+          in instance storage.
+      oracle/src/assets.rs::resolve_asset_index:
+        sentinel_values: Returns None if the asset (Stellar address or Other symbol)
+          is not found in instance storage.
+      oracle/src/assets.rs::resolve_asset_pair_indexes:
+        sentinel_values: Returns None if either the base_asset or quote_asset index
+          cannot be resolved.
+      oracle/src/assets.rs::add_assets:
+        vector_params: Takes a Vec<Asset> of new assets to add; iterates over each,
+          appending to the stored asset list and expiration records vector.
+        time_dependent: Computes an expiration timestamp based on the current ledger
+          timestamp plus initial_expiration_period (in days) for each new asset when
+          fee config is set.
+        sentinel_values: Panics with AssetAlreadyExists if an asset index already
+          exists; panics with AssetLimitExceeded if total assets reach ASSET_LIMIT
+          (1000). Expiration is only set when fee config is configured and expiration_timestamp
+          > 0.
+      oracle/src/assets.rs::expires:
+        sentinel_values: Panics with AssetMissing if the asset index is not found;
+          returns None if no expiration record exists at the asset's index.
+      oracle/src/assets.rs::init_expiration_config:
+        time_dependent: Computes a default expiration timestamp from current ledger
+          timestamp plus initial_expiration_period (in days) and applies it to all
+          existing assets.
+        sentinel_values: Returns early (no-op) if expiration records already have
+          entries (len > 0).
+      oracle/src/assets.rs::extend_ttl:
+        authorization: Burns fee tokens from the sponsor address via TokenClient::burn;
+          sponsor must have authorized the burn.
+        time_dependent: Uses current ledger timestamp to reset expired/unset asset
+          expirations to now before adding the bump period; bump is calculated as
+          amount * 86400000 / fee (milliseconds).
+        sentinel_values: Panics with InvalidAmount if amount <= 0 or computed bump
+          <= 0; panics with AssetMissing if asset not found; panics with InvalidConfigVersion
+          if fee config is None or fee <= 0. Treats asset_expiration of 0 or less
+          than now as expired, resetting to current timestamp.
+      oracle/src/assets.rs::load_expiration_records:
+        sentinel_values: Returns an empty Vec<u64> if the EXPIRATION_KEY is not found
+          in instance storage.
+      oracle/src/assets.rs::set_expirations_records:
+        vector_params: Accepts a Vec<u64> of expiration timestamps and writes it to
+          instance storage under EXPIRATION_KEY.
+      oracle/src/assets.rs::set_asset_index: {}
+  oracle/src/auth.rs:
+    content_sha256: 8d5a4802f745d3aec22a4afa771fce52cdd58528934d93f49269e78090bf4a3b
+    functions:
+      oracle/src/auth.rs::get_admin:
+        sentinel_values: Returns None if no admin address has been set in instance
+          storage.
+      oracle/src/auth.rs::set_admin: {}
+      oracle/src/auth.rs::panic_if_not_admin:
+        authorization: Requires that an admin is set (panics with Error::Unauthorized
+          if None) and calls require_auth() on the admin address.
+        sentinel_values: Panics with Error::Unauthorized if admin is None.
+  oracle/src/events.rs:
+    content_sha256: a780bfdf172ec6213202df94038b8475c933d9ca7f74318e0f3ee8b2f6b195db
+    functions:
+      oracle/src/events.rs::publish_update_event:
+        vector_params: Takes `updates` (Vec<i128> of prices) and `all_assets` (Vec<Asset>
+          of all registered assets); iterates over all_assets and pairs each with
+          its corresponding price from updates by index.
+        time_dependent: 'Accepts a `timestamp: u64` parameter that is included as
+          a topic in the published UpdateEvent.'
+        sentinel_values: Prices equal to 0 are treated as absent/invalid and skipped
+          (not included in the published event); `unwrap_or_default()` returns 0 for
+          out-of-bounds indices, which are also skipped.
+  oracle/src/lib.rs:
+    content_sha256: 7207b393053abf85b3a6cfa91a023935a6286135e185713f78bf34278b9d3dba
+    functions: {}
+  oracle/src/mapping.rs:
+    content_sha256: 793f1a17a8eeaddc0f0950790ecf846584a201b1186ca72bc18f9a16dc146ab3
+    functions:
+      oracle/src/mapping.rs::update_history_mask:
+        vector_params: 'Takes `updates: &Vec<i128>` where each element represents
+          a price for an asset at the corresponding index; iterated via enumerate
+          to update each asset''s bitmask slice.'
+        time_dependent: Maintains a rolling 256-period bitmask per asset; each call
+          left-shifts existing bits by 1 (evicting periods older than 256) and sets
+          the lowest bit if the price is positive.
+        sentinel_values: A price value of 0 or less is treated as "no price found"
+          and the corresponding bit is not set; U256 initialized to 0 when no previous
+          records exist for an asset.
+      oracle/src/mapping.rs::check_history_updated:
+        time_dependent: Checks whether a specific past period (0-255) has a recorded
+          price update for a given asset by inspecting the corresponding bit in the
+          history bitmask.
+        sentinel_values: Returns false by default if the byte at the computed position
+          is missing (unwrap_or_default returns 0).
+      oracle/src/mapping.rs::check_period_updated:
+        sentinel_values: Returns false by default if the byte at the computed position
+          is missing (unwrap_or_default returns 0).
+      oracle/src/mapping.rs::resolve_period_update_mask_position: {}
+  oracle/src/price_oracle.rs:
+    content_sha256: 0cbcda6933de0645d7b17494076d938334359befd6561b58a94ddef12df4e18a
+    functions:
+      oracle/src/price_oracle.rs::PriceOracleContractBase::base: {}
+      oracle/src/price_oracle.rs::PriceOracleContractBase::decimals: {}
+      oracle/src/price_oracle.rs::PriceOracleContractBase::resolution: {}
+      oracle/src/price_oracle.rs::PriceOracleContractBase::history_retention_period:
+        sentinel_values: Returns None if the stored period is 0, indicating no retention
+          period is configured.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::cache_size: {}
+      oracle/src/price_oracle.rs::PriceOracleContractBase::assets: {}
+      oracle/src/price_oracle.rs::PriceOracleContractBase::last_timestamp:
+        time_dependent: Returns the most recent price update timestamp converted from
+          milliseconds to seconds.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::version: {}
+      oracle/src/price_oracle.rs::PriceOracleContractBase::expires:
+        sentinel_values: Returns None if the asset is not supported.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::extend_asset_ttl:
+        authorization: Requires require_auth() on the sponsor address to authorize
+          fee payment for extending asset TTL.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::fee_config: {}
+      oracle/src/price_oracle.rs::PriceOracleContractBase::admin:
+        sentinel_values: Returns None if no admin address is set.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::price:
+        time_dependent: Retrieves price data at a specific timestamp (converted from
+          seconds to milliseconds and normalized to resolution).
+        sentinel_values: Returns None if the asset is not found or no price data exists
+          at the normalized timestamp.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::lastprice:
+        time_dependent: Returns the price at the most recent recorded timestamp; returns
+          None if last timestamp is 0.
+        sentinel_values: Returns None if the last timestamp is 0 (no prices recorded)
+          or if the asset is not supported.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::prices:
+        time_dependent: Loads the last N price records based on historical timestamps.
+        sentinel_values: Returns None if the asset index cannot be resolved.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::x_last_price:
+        time_dependent: Computes cross price at the most recent recorded timestamp;
+          returns None if timestamp is 0.
+        sentinel_values: Returns None if the last timestamp is 0 or if either asset
+          in the pair cannot be resolved.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::x_price:
+        time_dependent: Computes cross price at a specific timestamp (converted from
+          seconds to milliseconds and normalized).
+        sentinel_values: Returns None if either asset in the pair cannot be resolved
+          or no price data exists at the normalized timestamp.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::x_prices:
+        time_dependent: Loads the last N cross price records based on historical timestamps.
+        sentinel_values: Returns None if either asset in the pair cannot be resolved.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::twap:
+        time_dependent: Calculates time-weighted average price over N recent records
+          from historical timestamps.
+        sentinel_values: Returns None if the asset index cannot be resolved.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::x_twap:
+        time_dependent: Calculates time-weighted average cross price over N recent
+          records from historical timestamps.
+        sentinel_values: Returns None if either asset in the pair cannot be resolved.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::config:
+        authorization: Requires require_auth() on config.admin to authorize contract
+          initialization.
+        vector_params: config.assets is a Vec<Asset> specifying the initial list of
+          supported assets.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::set_cache_size:
+        authorization: Requires admin authorization via auth::panic_if_not_admin;
+          panics if caller is not admin.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::add_assets:
+        authorization: Requires admin authorization via auth::panic_if_not_admin;
+          panics if caller is not admin.
+        vector_params: assets is a Vec<Asset> of new assets to add to the supported
+          quoted assets list.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::set_history_retention_period:
+        authorization: Requires admin authorization via auth::panic_if_not_admin;
+          panics if caller is not admin.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::set_fee_config:
+        authorization: Requires admin authorization via auth::panic_if_not_admin;
+          panics if caller is not admin.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::set_price:
+        authorization: Requires admin authorization via auth::panic_if_not_admin;
+          panics if caller is not admin.
+        vector_params: update.prices contains price entries for assets; its length
+          is validated against the total supported assets count.
+        time_dependent: Validates that timestamp is non-zero, valid per resolution,
+          and not greater than ledger_timestamp; panics with InvalidTimestamp otherwise.
+        sentinel_values: Silently returns early if update.prices is empty (len ==
+          0); panics with InvalidTimestamp if timestamp is 0.
+      oracle/src/price_oracle.rs::PriceOracleContractBase::update_contract:
+        authorization: Requires admin authorization via auth::panic_if_not_admin;
+          panics if caller is not admin.
+  oracle/src/prices.rs:
+    content_sha256: 2c492e564bfb6a4f57a337b17d4361949cecf676f19df6f5c959d03199640cf3
+    functions:
+      oracle/src/prices.rs::normalize_price_data:
+        time_dependent: Converts the timestamp from milliseconds to seconds (divides
+          by 1000) when constructing PriceData.
+      oracle/src/prices.rs::obtain_last_record_timestamp:
+        time_dependent: Returns 0 if last_timestamp is 0, is in the future relative
+          to ledger time, or is older than 2*resolution from ledger time; otherwise
+          returns last_timestamp.
+        sentinel_values: Returns 0 as a sentinel indicating no valid last record timestamp
+          is available.
+      oracle/src/prices.rs::retrieve_asset_price_data:
+        time_dependent: Computes period offset from last timestamp using resolution;
+          returns None if period exceeds 255 or timestamp is after last recorded timestamp.
+        sentinel_values: Returns None if protocol is legacy and v1 price is missing,
+          if timestamp is after last, if period > 255, if no price in history mask,
+          or if no history record found.
+      oracle/src/prices.rs::extract_update_record_prices:
+        vector_params: Returns a Vec<i128> of length `total`; iterates over asset
+          indices 0..total, extracting prices from update.prices for assets marked
+          in update.mask, inserting 0 for unmarked assets.
+        sentinel_values: Uses 0 as the default price for assets not marked as updated
+          in the mask.
+      oracle/src/prices.rs::extract_single_update_record_price:
+        sentinel_values: Returns 0 if the asset_index is not marked as updated in
+          update.mask.
+      oracle/src/prices.rs::get_last_timestamp:
+        time_dependent: Reads the last update timestamp from instance storage.
+        sentinel_values: Returns 0 (unwrap_or_default) if no last timestamp has been
+          stored.
+      oracle/src/prices.rs::set_last_timestamp:
+        time_dependent: Stores the given timestamp as the last update timestamp in
+          instance storage.
+      oracle/src/prices.rs::get_history_map:
+        sentinel_values: Returns an empty Bytes if no history map is stored in instance
+          storage.
+      oracle/src/prices.rs::update_history_mask:
+        vector_params: Accepts prices as Vec<i128>; inserts empty zero-filled Vec
+          entries for each missing interval between last_timestamp and the new timestamp.
+        time_dependent: Computes update_delta from (timestamp - last_timestamp) /
+          resolution and fills missing intervals before updating the history mask.
+        sentinel_values: Uses 0i128 as placeholder prices for missing interval entries.
+      oracle/src/prices.rs::has_price: {}
+      oracle/src/prices.rs::load_history_record:
+        time_dependent: Looks up a PriceUpdate by exact timestamp, first in the instance
+          cache, then in temporary storage.
+        sentinel_values: Returns None if no record is found in either the cache or
+          temporary storage.
+      oracle/src/prices.rs::store_prices:
+        vector_params: Accepts update_v1 as Vec<i128> for legacy price storage; manages
+          a cache Vec of (u64, PriceUpdate) tuples bounded by cache_size, removing
+          oldest entries via pop_back.
+        time_dependent: Updates last_timestamp if the new timestamp is greater; computes
+          ledgers_to_live from retention_period for TTL extension of temporary storage
+          entries.
+        sentinel_values: Minimum TTL threshold of 16 ledgers; if ledgers_to_live <=
+          16, no TTL extension is performed.
+      oracle/src/prices.rs::load_prices:
+        vector_params: Returns Option<Vec<PriceData>> collecting price records via
+          get_price_fn callback; records count is capped at 20.
+        time_dependent: Iterates backward from obtain_last_record_timestamp by resolution
+          steps; returns None if last record timestamp is 0.
+        sentinel_values: Returns None if no prices are collected (empty result) or
+          if obtain_last_record_timestamp returns 0.
+      oracle/src/prices.rs::calculate_twap:
+        time_dependent: Checks that the last price timestamp plus resolution plus
+          60 seconds is not older than current ledger time; returns None if the data
+          is stale.
+        sentinel_values: Returns None if load_prices returns None, if the number of
+          returned prices doesn't match the requested records, or if price data is
+          too old.
+      oracle/src/prices.rs::load_cross_price:
+        time_dependent: Retrieves base and quote asset prices at a specific timestamp
+          and computes their cross price.
+        sentinel_values: Returns 10^decimals as the price when base_asset == quote_asset
+          (identity price); returns None if either asset price is unavailable.
+      oracle/src/prices.rs::load_price_records_cache:
+        vector_params: Returns Option<Vec<(u64, PriceUpdate)>> from instance storage
+          under the CACHE_KEY.
+        sentinel_values: Returns None if no cache entry exists in instance storage.
+      oracle/src/prices.rs::store_price_v1:
+        vector_params: Iterates over updates Vec<i128>, storing each non-zero price
+          in temporary storage keyed by (asset, timestamp).
+        time_dependent: Extends TTL of each stored price record by ledgers_to_live
+          if > 16.
+        sentinel_values: Skips prices equal to 0; minimum TTL threshold of 16 ledgers
+          for extension.
+      oracle/src/prices.rs::get_price_v1:
+        time_dependent: Loads a legacy price from temporary storage keyed by asset
+          and timestamp.
+        sentinel_values: Returns None if no price exists in temporary storage for
+          the given key.
+      oracle/src/prices.rs::format_price_key_v1:
+        time_dependent: Encodes timestamp and asset index into a single u128 key by
+          shifting timestamp left 64 bits and ORing with asset.
+      oracle/src/prices.rs::fixed_div_floor:
+        sentinel_values: Panics if dividend or divisor is <= 0 with message 'invalid
+          division arguments'.
+  oracle/src/protocol.rs:
+    content_sha256: 8fb294d074e5d88f8c81e91e91a2d3b37c156a200e2d567571fc095b33419384
+    functions:
+      oracle/src/protocol.rs::get_protocol_version:
+        sentinel_values: Returns 1 as default if no protocol version is stored (unwrap_or(1)).
+      oracle/src/protocol.rs::set_protocol_version: {}
+      oracle/src/protocol.rs::at_latest_protocol_version:
+        time_dependent: Delegates to schedule_update which compares ledger timestamp
+          against a stored upgrade timestamp plus a 1-day delay.
+      oracle/src/protocol.rs::schedule_update:
+        time_dependent: Uses ledger_timestamp and a 1-day (milliseconds) delay; upgrade
+          executes only after scheduled_update_ts + 1 day < ledger_timestamp.
+        sentinel_values: scheduled_update_ts defaults to 0 via unwrap_or(0); 0 means
+          no upgrade is scheduled yet; reset to 0 after upgrade completes.
+      oracle/src/protocol.rs::set_protocol_upgrade_timestamp:
+        time_dependent: Stores a u64 timestamp used for scheduling protocol upgrades.
+        sentinel_values: A value of 0 is used to indicate no upgrade is scheduled.
+  oracle/src/settings.rs:
+    content_sha256: ee4146820cb0ed6c286f2b83466d9e7332a795ffd3851709059f7f4c45b730b5
+    functions:
+      oracle/src/settings.rs::init:
+        authorization: No explicit authorization check; prevents re-initialization
+          by panicking with Error::AlreadyInitialized if RETENTION_PERIOD_KEY already
+          exists in instance storage.
+        sentinel_values: Panics with Error::AlreadyInitialized if the contract has
+          already been initialized (RETENTION_PERIOD_KEY exists in storage).
+      oracle/src/settings.rs::get_base_asset:
+        sentinel_values: Calls unwrap() on storage get; panics if BASE_KEY is not
+          set.
+      oracle/src/settings.rs::get_decimals:
+        sentinel_values: Calls unwrap() on storage get; panics if DECIMALS_KEY is
+          not set.
+      oracle/src/settings.rs::get_resolution:
+        sentinel_values: Calls unwrap() on storage get; panics if RESOLUTION_KEY is
+          not set.
+      oracle/src/settings.rs::set_resolution:
+        authorization: No authorization check within this function; caller is responsible
+          for access control.
+      oracle/src/settings.rs::get_history_retention_period:
+        sentinel_values: Returns 0 (unwrap_or_default) if RETENTION_PERIOD_KEY is
+          not set in storage.
+      oracle/src/settings.rs::set_history_retention_period:
+        authorization: No authorization check within this function; caller is responsible
+          for access control.
+      oracle/src/settings.rs::get_cache_size:
+        sentinel_values: Returns default value 2 (unwrap_or(2)) if CACHE_SIZE_KEY
+          is not set in storage.
+      oracle/src/settings.rs::set_cache_size:
+        authorization: No authorization check within this function; caller is responsible
+          for access control.
+      oracle/src/settings.rs::set_fee_config:
+        authorization: No authorization check within this function; caller is responsible
+          for access control.
+      oracle/src/settings.rs::get_fee_config:
+        sentinel_values: Returns a default FeeConfig::Some with XRF_TOKEN_ADDRESS
+          (CBLLEW7HD2RWATVSMLAGWM4G3WCHSHDJ25ALP4DI6LULV5TU35N2CIZA) and DEFAULT_RETENTION_FEE
+          (100_000_000) if RETENTION_KEY is not set.
+  oracle/src/timestamps.rs:
+    content_sha256: 2e48a47ad4683b6edaeb8f06ddca41487dc70505ba32b2f7a6fb7803ba48a6ca
+    functions:
+      oracle/src/timestamps.rs::normalize:
+        time_dependent: Normalizes a timestamp by truncating it to the timeframe resolution
+          retrieved from settings.
+        sentinel_values: Returns 0 if value is 0 or if the timeframe resolution is
+          0.
+      oracle/src/timestamps.rs::is_valid:
+        time_dependent: Checks whether a timestamp is already aligned to the settings-defined
+          timeframe resolution.
+      oracle/src/timestamps.rs::days_to_milliseconds:
+        time_dependent: Converts a number of days to milliseconds using the formula
+          days * 24 * 60 * 60 * 1000.
+      oracle/src/timestamps.rs::ledger_timestamp:
+        time_dependent: Returns the current ledger timestamp converted from seconds
+          to milliseconds.
+  oracle/src/types.rs:
+    content_sha256: f0ab18c153ed80b9b5d8a5b2d7f2d609345ecd66852191b58fc5a9534509305b
+    functions: {}
+  pulse-contract/src/lib.rs:
+    content_sha256: 6ea79d4a884bbb207707ddc2d2e7b68198f9933ff0bcbae8bd64d0115a62ec67
+    functions:
+      pulse-contract/src/lib.rs::PulseOracleContract::base: {}
+      pulse-contract/src/lib.rs::PulseOracleContract::decimals: {}
+      pulse-contract/src/lib.rs::PulseOracleContract::resolution: {}
+      pulse-contract/src/lib.rs::PulseOracleContract::history_retention_period:
+        sentinel_values: Returns None if history retention period is not configured.
+      pulse-contract/src/lib.rs::PulseOracleContract::cache_size: {}
+      pulse-contract/src/lib.rs::PulseOracleContract::assets: {}
+      pulse-contract/src/lib.rs::PulseOracleContract::last_timestamp:
+        time_dependent: Returns the timestamp (in seconds) of the most recent price
+          update.
+      pulse-contract/src/lib.rs::PulseOracleContract::version: {}
+      pulse-contract/src/lib.rs::PulseOracleContract::expires:
+        time_dependent: Returns the expiration timestamp for a given asset.
+        sentinel_values: Returns None if the asset is not supported.
+      pulse-contract/src/lib.rs::PulseOracleContract::extend_asset_ttl:
+        authorization: Requires sponsor address authorization (sponsor is passed as
+          parameter); sponsor pays tokens to extend TTL.
+        time_dependent: Extends asset expiration using INITIAL_EXPIRATION_PERIOD (180
+          days).
+      pulse-contract/src/lib.rs::PulseOracleContract::fee_config: {}
+      pulse-contract/src/lib.rs::PulseOracleContract::admin:
+        sentinel_values: Returns None if no admin is set.
+      pulse-contract/src/lib.rs::PulseOracleContract::price:
+        time_dependent: Looks up a price record at a specific timestamp (in seconds).
+        sentinel_values: Returns None if no price record found for the asset at the
+          given timestamp.
+      pulse-contract/src/lib.rs::PulseOracleContract::lastprice:
+        time_dependent: Returns the most recent price for the asset.
+        sentinel_values: Returns None if the asset is not supported.
+      pulse-contract/src/lib.rs::PulseOracleContract::prices:
+        time_dependent: Returns last N price records for the given asset.
+        sentinel_values: Returns None if the asset is not supported.
+      pulse-contract/src/lib.rs::PulseOracleContract::x_last_price:
+        time_dependent: Returns the most recent cross price for the asset pair.
+        sentinel_values: Returns None if no records found for the quoted assets.
+      pulse-contract/src/lib.rs::PulseOracleContract::x_price:
+        time_dependent: Returns cross price (base/quote) at a specific timestamp.
+        sentinel_values: Returns None if no records found for the quoted assets at
+          the given timestamp.
+      pulse-contract/src/lib.rs::PulseOracleContract::x_prices:
+        time_dependent: Returns last N cross price records for the asset pair.
+        sentinel_values: Returns None if no records found for the quoted assets.
+      pulse-contract/src/lib.rs::PulseOracleContract::twap:
+        time_dependent: Computes time-weighted average price over N recent records.
+        sentinel_values: Returns None if the asset is not supported.
+      pulse-contract/src/lib.rs::PulseOracleContract::x_twap:
+        time_dependent: Computes time-weighted average cross price (base/quote) over
+          N recent records.
+        sentinel_values: Returns None if the assets are not supported.
+      pulse-contract/src/lib.rs::PulseOracleContract::config:
+        authorization: Requires admin authorization; panics if not authorized.
+        time_dependent: Uses INITIAL_EXPIRATION_PERIOD (180 days) for initial asset
+          TTL setup.
+      pulse-contract/src/lib.rs::PulseOracleContract::set_cache_size:
+        authorization: Requires admin authorization; panics if not authorized.
+      pulse-contract/src/lib.rs::PulseOracleContract::add_assets:
+        authorization: Requires admin authorization; panics if not authorized.
+        vector_params: "assets: Vec<Asset> \u2014 list of assets to add to the quoted\
+          \ assets list."
+        time_dependent: Uses INITIAL_EXPIRATION_PERIOD (180 days) for new asset TTL.
+      pulse-contract/src/lib.rs::PulseOracleContract::set_history_retention_period:
+        authorization: Requires admin authorization; panics if not authorized.
+        time_dependent: Sets the history retention period (in seconds) for stored
+          price records.
+      pulse-contract/src/lib.rs::PulseOracleContract::set_fee_config:
+        authorization: Requires admin authorization; panics if not authorized or not
+          initialized.
+        time_dependent: Uses INITIAL_EXPIRATION_PERIOD (180 days) when setting fee
+          config.
+      pulse-contract/src/lib.rs::PulseOracleContract::set_price:
+        authorization: Requires admin authorization; panics if not authorized.
+        time_dependent: Records a price feed snapshot at the given timestamp.
+      pulse-contract/src/lib.rs::PulseOracleContract::update_contract:
+        authorization: Requires admin authorization; panics if not authorized.

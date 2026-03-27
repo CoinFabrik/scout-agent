@@ -1,0 +1,318 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T20:32:35Z'
+project_root: /Users/josegarcia/Desktop/Trustless-Work-Smart-Escrow
+model: openai:gpt-5.4
+llm_mode: creative
+files:
+  contracts/escrow/src/contract.rs:
+    content_sha256: dbd6b008ecd36c55d8bcebe38f07b56bace4146a1b5f4232024a8f498443efa3
+    functions:
+      contracts/escrow/src/contract.rs::EscrowContract::__constructor:
+        authorization: none evident; stores provided admin address in instance storage
+        time_dependent: no time-dependent logic
+        sentinel_values: none evident
+      contracts/escrow/src/contract.rs::EscrowContract::deploy:
+        authorization: requires deployer auth unless deployer equals current contract
+          address
+        vector_params: 'takes init_args: Vec<Val> and constructor_args: Vec<Val>;
+          passes them to invoke_contract and deploy_v2'
+        time_dependent: no time-dependent logic
+        sentinel_values: current contract address acts as auth-bypass sentinel for
+          deployer check
+      contracts/escrow/src/contract.rs::EscrowContract::initialize_escrow:
+        authorization: no direct auth in this file; delegated to EscrowManager::initialize_escrow
+          if any
+        time_dependent: no time-dependent logic
+        sentinel_values: none evident
+      contracts/escrow/src/contract.rs::EscrowContract::fund_escrow:
+        authorization: no direct auth in this file; signer passed to EscrowManager::fund_escrow
+          for any checks
+        time_dependent: no time-dependent logic
+        sentinel_values: none evident
+      contracts/escrow/src/contract.rs::EscrowContract::release_funds:
+        authorization: no direct auth in this file; release_signer passed to EscrowManager::release_funds
+          for any checks
+        time_dependent: no time-dependent logic
+        sentinel_values: none evident
+      contracts/escrow/src/contract.rs::EscrowContract::update_escrow:
+        authorization: no direct auth in this file; plataform_address passed to EscrowManager::change_escrow_properties
+          for any checks
+        time_dependent: no time-dependent logic
+        sentinel_values: none evident
+      contracts/escrow/src/contract.rs::EscrowContract::get_escrow:
+        authorization: none evident
+        time_dependent: no time-dependent logic
+        sentinel_values: none evident
+      contracts/escrow/src/contract.rs::EscrowContract::get_escrow_by_contract_id:
+        authorization: none evident
+        time_dependent: no time-dependent logic
+        sentinel_values: none evident
+      contracts/escrow/src/contract.rs::EscrowContract::get_multiple_escrow_balances:
+        authorization: no direct auth in this file; signer passed to EscrowManager::get_multiple_escrow_balances
+          for any checks
+        vector_params: 'takes addresses: Vec<Address> and returns Result<Vec<AddressBalance>,
+          ContractError>'
+        time_dependent: no time-dependent logic
+        sentinel_values: none evident
+      contracts/escrow/src/contract.rs::EscrowContract::change_milestone_status:
+        authorization: no direct auth in this file; service_provider passed to MilestoneManager::change_milestone_status
+          for any checks
+        time_dependent: no time-dependent logic
+        sentinel_values: new_evidence is optional and may be None as a sentinel for
+          no evidence update
+      contracts/escrow/src/contract.rs::EscrowContract::approve_milestone:
+        authorization: no direct auth in this file; approver passed to MilestoneManager::change_milestone_approved_flag
+          for any checks
+        time_dependent: no time-dependent logic
+        sentinel_values: none evident
+      contracts/escrow/src/contract.rs::EscrowContract::resolve_dispute:
+        authorization: no direct auth in this file; dispute_resolver passed to DisputeManager::resolve_dispute
+          for any checks
+        time_dependent: no time-dependent logic
+        sentinel_values: none evident
+      contracts/escrow/src/contract.rs::EscrowContract::dispute_escrow:
+        authorization: no direct auth in this file; signer passed to DisputeManager::dispute_escrow
+          for any checks
+        time_dependent: no time-dependent logic
+        sentinel_values: none evident
+  contracts/escrow/src/core/dispute.rs:
+    content_sha256: c89d0bcb1f2d9d289d46bd07e66e1c7a531aae6be655650f4711ac18d4cb573d
+    functions:
+      contracts/escrow/src/core/dispute.rs::DisputeManager::resolve_dispute:
+        authorization: Requires dispute_resolver auth via require_auth; further resolver/escrow
+          state checks are enforced by validate_dispute_resolution_conditions.
+        vector_params: No vector parameters.
+        time_dependent: No explicit time/block/timestamp dependence in this function.
+        sentinel_values: Transfers to approver/receiver only when net amounts > 0;
+          errors if contract token balance is less than approver_funds + receiver_funds.
+      contracts/escrow/src/core/dispute.rs::DisputeManager::dispute_escrow:
+        authorization: Requires signer auth via require_auth; signer eligibility and
+          escrow state are checked by validate_dispute_flag_change_conditions.
+        vector_params: No vector parameters.
+        time_dependent: No explicit time/block/timestamp dependence in this function.
+        sentinel_values: Sets disputed flag true after validation; no special sentinel
+          constants beyond boolean flag transition.
+  contracts/escrow/src/core/escrow.rs:
+    content_sha256: 18e81e7a169fbc9e8b09ae4d13453b92e886bc40761a022dd42313f143274106
+    functions:
+      contracts/escrow/src/core/escrow.rs::EscrowManager::get_receiver:
+        time_dependent: no time-based logic
+        sentinel_values: if receiver equals service_provider, returns service_provider;
+          otherwise returns receiver
+      contracts/escrow/src/core/escrow.rs::EscrowManager::initialize_escrow:
+        authorization: no direct require_auth; relies on validate_initialize_escrow_conditions
+          before storing escrow in instance storage
+        time_dependent: no time-based logic
+        sentinel_values: stores under DataKey::Escrow; returns validation/storage
+          errors via Result
+      contracts/escrow/src/core/escrow.rs::EscrowManager::fund_escrow:
+        authorization: signer.require_auth() after validating amount and expected
+          escrow against stored escrow
+        time_dependent: no time-based logic
+        sentinel_values: loads stored escrow via get_escrow; transfers amount from
+          signer to current contract; validator may reject mismatched expected_escrow
+          or invalid amount
+      contracts/escrow/src/core/escrow.rs::EscrowManager::release_funds:
+        authorization: release_signer.require_auth() and validate_release_conditions
+          on stored escrow and signer
+        time_dependent: no time-based logic
+        sentinel_values: sets escrow.flags.released = true; errors if contract token
+          balance < escrow.amount with EscrowBalanceNotEnoughToSendEarnings; splits
+          payout into trustless_work_fee, platform_fee, and receiver_amount
+      contracts/escrow/src/core/escrow.rs::EscrowManager::change_escrow_properties:
+        authorization: platform_address.require_auth() and validate_escrow_property_change_conditions
+          against existing escrow, new properties, platform address, and contract
+          balance
+        time_dependent: no time-based logic
+        sentinel_values: reads current contract token balance for validation; overwrites
+          DataKey::Escrow on success
+      contracts/escrow/src/core/escrow.rs::EscrowManager::get_multiple_escrow_balances:
+        authorization: signer.require_auth()
+        vector_params: 'addresses: Vec<Address> input; iterates each address and returns
+          Vec<AddressBalance>'
+        time_dependent: no time-based logic
+        sentinel_values: enforces MAX_ESCROWS = 20 and returns TooManyEscrowsRequested
+          if exceeded
+      contracts/escrow/src/core/escrow.rs::EscrowManager::get_escrow_by_contract_id:
+        vector_params: passes empty Vec to invoke_contract; no vector input params
+        time_dependent: no time-based logic
+        sentinel_values: invokes target contract's "get_escrow" entrypoint for the
+          provided contract_id
+      contracts/escrow/src/core/escrow.rs::EscrowManager::get_escrow:
+        time_dependent: no time-based logic
+        sentinel_values: reads DataKey::Escrow from instance storage and returns EscrowNotFound
+          if missing
+  contracts/escrow/src/core/milestone.rs:
+    content_sha256: a9c679a47e01b4bd6a9a6ee628fe73b2633c8490c6ed2f9d714ee6a0344fb0d6
+    functions:
+      contracts/escrow/src/core/milestone.rs::MilestoneManager::change_milestone_status:
+        authorization: Requires service_provider.require_auth() and validator checks
+          via validate_milestone_status_change_conditions against the escrow, milestone
+          index, and service_provider.
+        vector_params: No vector parameters; updates a milestone selected from existing_escrow.milestones
+          by milestone_index.
+        time_dependent: No explicit time-dependent logic in this function.
+        sentinel_values: Uses Option<String> for new_evidence where None leaves evidence
+          unchanged; missing milestone at index returns ContractError::InvalidMileStoneIndex.
+      contracts/escrow/src/core/milestone.rs::MilestoneManager::change_milestone_approved_flag:
+        authorization: Requires approver.require_auth() and validator checks via validate_milestone_flag_change_conditions
+          against the escrow, target milestone, index, and approver.
+        vector_params: No vector parameters; updates a milestone selected from existing_escrow.milestones
+          by milestone_index.
+        time_dependent: No explicit time-dependent logic in this function.
+        sentinel_values: Missing milestone at index returns ContractError::InvalidMileStoneIndex;
+          new_flag is a plain bool with no sentinel handling.
+  contracts/escrow/src/core/validators/dispute.rs:
+    content_sha256: 70209a8062d43faa74e0220fc109d5f952d32942726efa5c6037b63c8372d468
+    functions:
+      contracts/escrow/src/core/validators/dispute.rs::validate_dispute_resolution_conditions:
+        authorization: Only the provided dispute_resolver address matching escrow.roles.dispute_resolver
+          may execute; otherwise errors.
+        vector_params: No vector or list parameters.
+        time_dependent: Not time-dependent; checks role, dispute flag, balances, and
+          fee thresholds only.
+        sentinel_values: Rejects when escrow.flags.disputed is false, approver_funds
+          or receiver_funds are negative, total_funds != current_balance, approver_funds
+          < fee_result.net_approver_funds, or receiver_funds < fee_result.net_receiver_funds.
+      contracts/escrow/src/core/validators/dispute.rs::validate_dispute_flag_change_conditions:
+        authorization: 'Signer must equal one of escrow roles: approver, service_provider,
+          platform_address, release_signer, dispute_resolver, or receiver.'
+        vector_params: No vector or list parameters.
+        time_dependent: Not time-dependent; depends only on current dispute flag and
+          signer role membership.
+        sentinel_values: Rejects if escrow.flags.disputed is already true or signer
+          matches none of the authorized role addresses.
+  contracts/escrow/src/core/validators/escrow.rs:
+    content_sha256: 7f6cb78c27f163a2024b99d5eb816008f61ec5cbab03abcfcf1e11da6545d07d
+    functions:
+      contracts/escrow/src/core/validators/escrow.rs::validate_release_conditions:
+        authorization: Requires release_signer to equal escrow.roles.release_signer;
+          otherwise rejects, and also rejects if already released, disputed, no milestones,
+          or any milestone unapproved.
+        vector_params: Reads escrow.milestones vector; requires it non-empty and all
+          entries approved.
+        time_dependent: No time-based checks.
+        sentinel_values: Treats released/disputed flags, empty milestones, and milestone.approved=false
+          as invalid sentinel states.
+      contracts/escrow/src/core/validators/escrow.rs::validate_escrow_property_change_conditions:
+        authorization: Requires platform_address to equal existing_escrow.roles.platform_address;
+          otherwise rejects.
+        vector_params: Iterates existing_escrow.milestones to forbid any approved
+          milestone, rejects if new_escrow has any approved milestone, and limits
+          existing_escrow.milestones.len() to at most 10.
+        time_dependent: No time-based checks.
+        sentinel_values: Rejects if existing escrow is disputed, new escrow has released/disputed/resolved
+          flags set, contract_balance>0, existing_escrow.amount==0, or milestones
+          exceed 10.
+      contracts/escrow/src/core/validators/escrow.rs::validate_initialize_escrow_conditions:
+        authorization: No caller/address authorization checks; only ensures no existing
+          DataKey::Escrow instance is already stored.
+        vector_params: Checks escrow_properties.milestones for any approved milestone
+          and enforces milestones.len() <= 10.
+        time_dependent: No time-based checks.
+        sentinel_values: Rejects if escrow already initialized, any released/disputed/resolved
+          flag is true, any milestone is pre-approved, platform_fee>9900, or amount==0.
+      contracts/escrow/src/core/validators/escrow.rs::validate_fund_escrow_conditions:
+        authorization: No caller/address authorization checks.
+        vector_params: No vector-specific validation beyond full Escrow equality comparison
+          between stored_escrow and expected_escrow.
+        time_dependent: No time-based checks.
+        sentinel_values: Rejects if amount<=0 or if stored_escrow != expected_escrow.
+  contracts/escrow/src/core/validators/milestone.rs:
+    content_sha256: a53348d0c3c6808349753348973bccb2c57b43170497b936afb75471d58bd67e
+    functions:
+      contracts/escrow/src/core/validators/milestone.rs::validate_milestone_status_change_conditions:
+        authorization: Only the escrow service_provider address may change milestone
+          status; otherwise returns OnlyServiceProviderChangeMilstoneStatus.
+        time_dependent: No time-based checks.
+        sentinel_values: Rejects when escrow.milestones is empty, or milestone_index
+          is negative or >= milestones.len() as i128.
+      contracts/escrow/src/core/validators/milestone.rs::validate_milestone_flag_change_conditions:
+        authorization: Only the escrow approver address may change a milestone flag;
+          otherwise returns OnlyApproverChangeMilstoneFlag.
+        time_dependent: No time-based checks.
+        sentinel_values: Rejects if milestone.approved is true, milestone.status is
+          empty, escrow.milestones is empty, or milestone_index is negative or >=
+          milestones.len() as i128.
+  contracts/escrow/src/error.rs:
+    content_sha256: 922bd3bba0cfb6cde7e0324829a6f0f183256a10855337b62d8097ce23611038
+    functions:
+      contracts/escrow/src/error.rs::ContractError::fmt:
+        authorization: None; formats any ContractError variant into a display string
+          without caller or role checks.
+        vector_params: None; takes only &self and a mutable fmt::Formatter, with no
+          vector/list parameters.
+        time_dependent: No; behavior is deterministic string formatting with no block
+          time, ledger time, or time-based branching.
+        sentinel_values: Maps enum variants to fixed messages; notable constraint-like
+          sentinels only appear in messages such as zero-or-less amount, more than
+          10 milestones, and platform fee exceeding 99%.
+  contracts/escrow/src/events/handler.rs:
+    content_sha256: 97893464abe772a4f29096da7c1bbb3c862ef080f9c7fed7c0664f94dfe419c6
+    functions:
+      contracts/escrow/src/events/handler.rs::escrows_by_contract_id:
+        authorization: None; public helper publishes an event without caller or role
+          checks.
+        vector_params: Builds event_payload as a vector [escrow_id, escrow]; no vector-type
+          parameters in the signature.
+        time_dependent: None; no ledger time, timestamp, or sequence access.
+        sentinel_values: Uses fixed event topic symbol_short!("p_by_spdr"); no sentinel/control
+          values in inputs or branching.
+  contracts/escrow/src/lib.rs:
+    content_sha256: 879d27a392a41a7c581659102ee9b27778901364e3637cf676f994d0e9fd433c
+    functions: {}
+  contracts/escrow/src/modules/fee/calculator.rs:
+    content_sha256: 8e15773724c2a7b269e96c97341449f75affbc9189cf3ea6895edc3c13f425c1
+    functions:
+      contracts/escrow/src/modules/fee/calculator.rs::FeeCalculator::calculate_standard_fees:
+        authorization: No authorization checks; pure private fee calculation from
+          numeric inputs only.
+        vector_params: No vector/list parameters; inputs are scalar i128 values total_amount
+          and platform_fee_bps.
+        time_dependent: Not time-dependent; no block time, timestamp, or temporal
+          state used.
+        sentinel_values: Uses constant fee basis points TRUSTLESS_WORK_FEE_BPS=30
+          and BASIS_POINTS_DENOMINATOR=10000; no special-case sentinel branch values.
+      contracts/escrow/src/modules/fee/calculator.rs::FeeCalculator::calculate_dispute_fees:
+        authorization: No authorization checks; pure private fee calculation from
+          numeric inputs only.
+        vector_params: No vector/list parameters; inputs are scalar i128 values approver_funds,
+          receiver_funds, platform_fee_bps, and total_resolved_funds.
+        time_dependent: Not time-dependent; no block time, timestamp, or temporal
+          state used.
+        sentinel_values: Uses constants TRUSTLESS_WORK_FEE_BPS=30 and BASIS_POINTS_DENOMINATOR=10000;
+          treats total_resolved_funds <= 0 via else branches that set net_approver_funds
+          and net_receiver_funds to 0, avoiding proportional fee-share division.
+  contracts/escrow/src/modules/math/basic.rs:
+    content_sha256: bfe539c65df60c8ad6c7de416a728502534731b9b42067e2b0bb127028b3ff9d
+    functions:
+      contracts/escrow/src/modules/math/basic.rs::BasicMath::safe_add:
+        authorization: No authorization; private pure arithmetic helper with no caller
+          or state checks.
+        vector_params: None; takes two scalar i128 parameters a and b.
+        time_dependent: No; deterministic checked addition with no time or ledger
+          dependence.
+        sentinel_values: Returns ContractError::Overflow when checked_add returns
+          None due to i128 overflow.
+      contracts/escrow/src/modules/math/basic.rs::BasicMath::safe_sub:
+        authorization: No authorization; private pure arithmetic helper with no caller
+          or state checks.
+        vector_params: None; takes two scalar i128 parameters a and b.
+        time_dependent: No; deterministic checked subtraction with no time or ledger
+          dependence.
+        sentinel_values: Returns ContractError::Underflow when checked_sub returns
+          None due to i128 underflow/overflow.
+  contracts/escrow/src/modules/math/safe.rs:
+    content_sha256: c042aa3d027813ff80cfb7024927fb38c9357a4e20c494756503bde8c7dd7942
+    functions:
+      contracts/escrow/src/modules/math/safe.rs::SafeMath::safe_mul_div:
+        authorization: none; pure private arithmetic helper with no caller or permission
+          checks
+        vector_params: none; takes only scalar i128 params amount, multiplier, divisor
+        time_dependent: none; no block, timestamp, or other time-based inputs or logic
+        sentinel_values: returns ContractError::Overflow on checked_mul failure and
+          ContractError::DivisionError on checked_div failure, including divisor ==
+          0
+  contracts/escrow/src/storage/types.rs:
+    content_sha256: 3057cbd0fa82b48eb38fb8dac836c7529d919ededb70f17559cd945ec49f55ed
+    functions: {}

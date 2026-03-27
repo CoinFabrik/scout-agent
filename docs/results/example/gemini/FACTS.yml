@@ -1,0 +1,31 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T19:47:40Z'
+project_root: /home/francis/Repos/scout-agent/benchmark/example_contract
+model: anthropic:claude-opus-4-6
+llm_mode: creative
+files:
+  src/lib.rs:
+    content_sha256: d62026370f681202e4da69b3aa8edc1bd2891ab5db0bcaf691970398b942aa5e
+    functions:
+      src/lib.rs::CommunityTreasury::initialize:
+        authorization: No auth required; panics if Admin key already exists in persistent
+          storage (one-time initialization guard).
+        sentinel_values: Uses unwrap via panic!() if Admin key already set; no default/sentinel
+          values otherwise.
+      src/lib.rs::CommunityTreasury::fund_treasury:
+        authorization: No authorization check; anyone can call fund_treasury to increase
+          the vault balance.
+        sentinel_values: Vault balance defaults to 0 via unwrap_or(0) if DataKey::Vault
+          is not yet set.
+      src/lib.rs::CommunityTreasury::distribute_rewards:
+        authorization: Requires auth from the stored Admin address via admin.require_auth().
+        vector_params: 'Takes recipients: Vec<Address>; duplicate addresses are collapsed
+          into a Map so only unique recipients are paid; batch_size (recipients.len())
+          influences reward_amount as 1000 + (batch_size * 50), meaning duplicates
+          inflate the per-recipient reward.'
+        sentinel_values: Vault balance defaults to 0 via unwrap_or(0); panics if recipients
+          is empty or if vault_balance < amount during iteration.
+      src/lib.rs::CommunityTreasury::get_treasury_balance:
+        authorization: No authorization required; publicly readable.
+        sentinel_values: Returns 0 via unwrap_or(0) if DataKey::Vault has not been
+          set.

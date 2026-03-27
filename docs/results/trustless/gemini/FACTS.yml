@@ -1,0 +1,175 @@
+schema_version: '3'
+generated_at_utc: '2026-03-26T15:27:58Z'
+project_root: /Users/josegarcia/Desktop/Trustless-Work-Smart-Escrow
+model: gemini:gemini-3.1-pro-preview
+llm_mode: creative
+files:
+  contracts/escrow/src/contract.rs:
+    content_sha256: dbd6b008ecd36c55d8bcebe38f07b56bace4146a1b5f4232024a8f498443efa3
+    functions:
+      contracts/escrow/src/contract.rs::EscrowContract::__constructor:
+        authorization: Saves the admin address to contract storage without explicit
+          authentication checks.
+      contracts/escrow/src/contract.rs::EscrowContract::deploy:
+        authorization: Requires authentication from the deployer if it is not the
+          current contract address.
+        vector_params: Uses init_args and constructor_args vectors to pass arguments
+          for initialization and deployment.
+      contracts/escrow/src/contract.rs::EscrowContract::initialize_escrow:
+        authorization: Delegates to EscrowManager which handles authorization logic
+          internally.
+      contracts/escrow/src/contract.rs::EscrowContract::fund_escrow:
+        authorization: Delegates to EscrowManager to authorize the signer for funding
+          the escrow.
+      contracts/escrow/src/contract.rs::EscrowContract::release_funds:
+        authorization: Delegates to EscrowManager to authorize the release_signer
+          for releasing funds.
+      contracts/escrow/src/contract.rs::EscrowContract::update_escrow:
+        authorization: Delegates to EscrowManager which handles any required authorization
+          internally.
+      contracts/escrow/src/contract.rs::EscrowContract::get_escrow: {}
+      contracts/escrow/src/contract.rs::EscrowContract::get_escrow_by_contract_id: {}
+      contracts/escrow/src/contract.rs::EscrowContract::get_multiple_escrow_balances:
+        authorization: Delegates to EscrowManager to authorize the signer when querying
+          multiple balances.
+        vector_params: Accepts an addresses vector to specify multiple targets for
+          balance lookups.
+      contracts/escrow/src/contract.rs::EscrowContract::change_milestone_status:
+        authorization: Delegates to MilestoneManager to authorize the service_provider
+          modifying the status.
+      contracts/escrow/src/contract.rs::EscrowContract::approve_milestone:
+        authorization: Delegates to MilestoneManager to authorize the approver.
+      contracts/escrow/src/contract.rs::EscrowContract::resolve_dispute:
+        authorization: Delegates to DisputeManager to authorize the dispute_resolver.
+      contracts/escrow/src/contract.rs::EscrowContract::dispute_escrow:
+        authorization: Delegates to DisputeManager to authorize the signer raising
+          the dispute.
+  contracts/escrow/src/core/dispute.rs:
+    content_sha256: c89d0bcb1f2d9d289d46bd07e66e1c7a531aae6be655650f4711ac18d4cb573d
+    functions:
+      contracts/escrow/src/core/dispute.rs::DisputeManager::resolve_dispute:
+        authorization: Requires authentication from the dispute_resolver address.
+        sentinel_values: Checks if net funds are greater than 0 before transferring;
+          sets resolved flag to true and disputed flag to false.
+      contracts/escrow/src/core/dispute.rs::DisputeManager::dispute_escrow:
+        authorization: Requires authentication from the signer address.
+        sentinel_values: Sets the escrow disputed flag to true.
+  contracts/escrow/src/core/escrow.rs:
+    content_sha256: 18e81e7a169fbc9e8b09ae4d13453b92e886bc40761a022dd42313f143274106
+    functions:
+      contracts/escrow/src/core/escrow.rs::EscrowManager::get_receiver: {}
+      contracts/escrow/src/core/escrow.rs::EscrowManager::initialize_escrow: {}
+      contracts/escrow/src/core/escrow.rs::EscrowManager::fund_escrow:
+        authorization: Requires authorization from the signer address
+      contracts/escrow/src/core/escrow.rs::EscrowManager::release_funds:
+        authorization: Requires authorization from the release_signer address
+        sentinel_values: Sets escrow.flags.released to true
+      contracts/escrow/src/core/escrow.rs::EscrowManager::change_escrow_properties:
+        authorization: Requires authorization from the platform_address
+      contracts/escrow/src/core/escrow.rs::EscrowManager::get_multiple_escrow_balances:
+        authorization: Requires authorization from the signer address
+        vector_params: Accepts a vector of Address elements representing the escrows
+          to query
+        sentinel_values: Enforces a hardcoded limit of 20 via MAX_ESCROWS
+      contracts/escrow/src/core/escrow.rs::EscrowManager::get_escrow_by_contract_id: {}
+      contracts/escrow/src/core/escrow.rs::EscrowManager::get_escrow: {}
+  contracts/escrow/src/core/milestone.rs:
+    content_sha256: a9c679a47e01b4bd6a9a6ee628fe73b2633c8490c6ed2f9d714ee6a0344fb0d6
+    functions:
+      contracts/escrow/src/core/milestone.rs::MilestoneManager::change_milestone_status:
+        authorization: Requires service_provider to authorize the transaction.
+        vector_params: Updates an element within the milestones collection using milestone_index.
+        sentinel_values: Returns ContractError::InvalidMileStoneIndex if the milestone
+          index is out of bounds.
+      contracts/escrow/src/core/milestone.rs::MilestoneManager::change_milestone_approved_flag:
+        authorization: Requires approver to authorize the transaction.
+        vector_params: Retrieves and modifies a specific element in the milestones
+          collection by index.
+        sentinel_values: Returns ContractError::InvalidMileStoneIndex if the specified
+          milestone index is invalid.
+  contracts/escrow/src/core/validators/dispute.rs:
+    content_sha256: 70209a8062d43faa74e0220fc109d5f952d32942726efa5c6037b63c8372d468
+    functions:
+      contracts/escrow/src/core/validators/dispute.rs::validate_dispute_resolution_conditions:
+        authorization: Requires the caller to match the designated dispute resolver
+          in the escrow roles.
+        sentinel_values: Checks that escrow is disputed, funds are not negative, total
+          funds match the current balance, and funds cover commission fees.
+      contracts/escrow/src/core/validators/dispute.rs::validate_dispute_flag_change_conditions:
+        authorization: Requires the signer to be an authorized role (approver, service
+          provider, platform, release signer, dispute resolver, or receiver).
+        sentinel_values: Checks that the escrow is not already in a disputed state.
+  contracts/escrow/src/core/validators/escrow.rs:
+    content_sha256: 7f6cb78c27f163a2024b99d5eb816008f61ec5cbab03abcfcf1e11da6545d07d
+    functions:
+      contracts/escrow/src/core/validators/escrow.rs::validate_release_conditions:
+        authorization: Verifies that the provided release_signer matches the escrow.roles.release_signer.
+        vector_params: Iterates over the escrow.milestones vector to ensure it is
+          non-empty and all items are approved.
+        sentinel_values: Checks that the boolean status flags escrow.flags.released
+          and escrow.flags.disputed are not set.
+      contracts/escrow/src/core/validators/escrow.rs::validate_escrow_property_change_conditions:
+        authorization: Verifies that the provided platform_address matches the existing_escrow.roles.platform_address.
+        vector_params: Iterates over existing_escrow.milestones and new_escrow.milestones
+          to ensure no individual milestones are already approved.
+        sentinel_values: Enforces a maximum limit of 10 milestones, zero contract
+          balance, non-zero escrow amount, and enforces false boolean status flags.
+      contracts/escrow/src/core/validators/escrow.rs::validate_initialize_escrow_conditions:
+        vector_params: Iterates over the escrow_properties.milestones vector to verify
+          that no milestone is pre-approved.
+        sentinel_values: Validates the contract is uninitialized, enforces a max platform
+          fee of 9900 bps, non-zero amount, max 10 milestones, and false status flags.
+      contracts/escrow/src/core/validators/escrow.rs::validate_fund_escrow_conditions:
+        sentinel_values: Validates that the funding amount is greater than 0 and verifies
+          equality between stored and expected escrow objects.
+  contracts/escrow/src/core/validators/milestone.rs:
+    content_sha256: a53348d0c3c6808349753348973bccb2c57b43170497b936afb75471d58bd67e
+    functions:
+      contracts/escrow/src/core/validators/milestone.rs::validate_milestone_status_change_conditions:
+        authorization: Requires the caller to be the service provider defined in the
+          escrow roles.
+        vector_params: Validates the length of the `escrow.milestones` vector.
+        sentinel_values: Checks that `milestone_index` is non-negative and less than
+          the total number of milestones.
+      contracts/escrow/src/core/validators/milestone.rs::validate_milestone_flag_change_conditions:
+        authorization: Requires the caller to be the approver defined in the escrow
+          roles.
+        vector_params: Checks if the `escrow.milestones` vector is empty and validates
+          index against its length.
+        sentinel_values: Validates `milestone_index` bounds, ensures `milestone.approved`
+          is false, and `milestone.status` is not empty.
+  contracts/escrow/src/error.rs:
+    content_sha256: 922bd3bba0cfb6cde7e0324829a6f0f183256a10855337b62d8097ce23611038
+    functions:
+      contracts/escrow/src/error.rs::ContractError::fmt: {}
+  contracts/escrow/src/events/handler.rs:
+    content_sha256: 97893464abe772a4f29096da7c1bbb3c862ef080f9c7fed7c0664f94dfe419c6
+    functions:
+      contracts/escrow/src/events/handler.rs::escrows_by_contract_id:
+        sentinel_values: Uses 'p_by_spdr' as the event topic.
+  contracts/escrow/src/lib.rs:
+    content_sha256: 879d27a392a41a7c581659102ee9b27778901364e3637cf676f994d0e9fd433c
+    functions: {}
+  contracts/escrow/src/modules/fee/calculator.rs:
+    content_sha256: 8e15773724c2a7b269e96c97341449f75affbc9189cf3ea6895edc3c13f425c1
+    functions:
+      contracts/escrow/src/modules/fee/calculator.rs::FeeCalculator::calculate_standard_fees: {}
+      contracts/escrow/src/modules/fee/calculator.rs::FeeCalculator::calculate_dispute_fees:
+        sentinel_values: Returns 0 for both net_approver_funds and net_receiver_funds
+          if total_resolved_funds is not greater than 0 to prevent division by zero.
+  contracts/escrow/src/modules/math/basic.rs:
+    content_sha256: bfe539c65df60c8ad6c7de416a728502534731b9b42067e2b0bb127028b3ff9d
+    functions:
+      contracts/escrow/src/modules/math/basic.rs::BasicMath::safe_add:
+        sentinel_values: Returns ContractError::Overflow if addition overflows
+      contracts/escrow/src/modules/math/basic.rs::BasicMath::safe_sub:
+        sentinel_values: Returns ContractError::Underflow if subtraction underflows
+  contracts/escrow/src/modules/math/safe.rs:
+    content_sha256: c042aa3d027813ff80cfb7024927fb38c9357a4e20c494756503bde8c7dd7942
+    functions:
+      contracts/escrow/src/modules/math/safe.rs::SafeMath::safe_mul_div:
+        sentinel_values: Returns ContractError::Overflow if multiplication overflows,
+          and ContractError::DivisionError if division fails or divisor is zero.
+  contracts/escrow/src/storage/types.rs:
+    content_sha256: 3057cbd0fa82b48eb38fb8dac836c7529d919ededb70f17559cd945ec49f55ed
+    functions: {}
