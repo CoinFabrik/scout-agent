@@ -101,4 +101,10 @@ The Q1 POC successfully demonstrated that pivoting to a multi agent architecture
 
 Following the completion of the Q1 2026 grant, our next steps involve integrating these AI POCs into a unified product roadmap. This will focus on refining fallback heuristics, optimizing token throughput, and expanding the expertise of the agent to broader vulnerability categories.
 
-…\[Mention some of the proposals for Q2\]...
+Additionally, we will explore the viability of implementing iterative QA passes as a post-processing layer in the audit pipeline. Rather than relying on a single pass for final results, this approach would introduce sequential validation stages where independent agents re-evaluate previously identified findings. These QA agents would be tasked with:
+
+* Verifying the correctness of detected vulnerabilities
+* Eliminating false positives through adversarial review
+* Re-ranking findings based on confidence and reproducibility
+
+This multi-pass validation strategy aims to increase precision without significantly degrading recall, leveraging the strengths of agent specialization while mitigating noise introduced during initial detection. Early hypotheses suggest that structured QA loops could serve as a cost-effective alternative to increasing base model complexity, while improving trustworthiness for production-grade audits.
