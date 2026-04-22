@@ -218,7 +218,7 @@ def _load_current_file_facts(
     return load_facts_document(facts_file_path(facts_root, current_file)).functions
 
 
-def _deduplicate_and_relativize(
+def _relativize_findings(
     findings: list[Finding],
     project_root: Path,
 ) -> list[Finding]:

@@ -11,7 +11,7 @@ from scout_agent.runtime.audit.engine.context import AuditContext
 from scout_agent.runtime.audit.engine.runners import (
     run_file_audit,
     run_execution_path_consistency_audit,
-    _deduplicate_and_relativize,
+    _relativize_findings,
 )
 from scout_agent.domain.audit import AuditFailure, AuditState
 from scout_agent.runtime.audit.engine.experts import build_expert_subagents
@@ -98,7 +98,7 @@ def _make_audit_file_node(
                 outer_thread_id=outer_thread_id,
                 generation=generation,
             )
-            findings = _deduplicate_and_relativize(
+            findings = _relativize_findings(
                 response.findings, runtime.project_root
             )
             for finding in findings:
@@ -161,7 +161,7 @@ def _make_epc_node(
                 outer_thread_id=outer_thread_id,
                 generation=generation,
             )
-            findings = _deduplicate_and_relativize(
+            findings = _relativize_findings(
                 response.findings, runtime.project_root
             )
             for finding in findings:
