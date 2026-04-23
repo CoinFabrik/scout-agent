@@ -6,9 +6,9 @@ import re
 import subprocess
 from pathlib import Path
 from threading import Lock
-from typing import Generator
 
 DEBUG_MODE = os.environ.get("SCOUT_DEBUG", "false").lower() == "true"
+
 
 def _debug(msg: str, detail: str = "") -> None:
     if DEBUG_MODE:
@@ -163,7 +163,6 @@ def _regex_grep(
     return results
 
 
-
 def build_readonly_tools(
     *,
     root_dir: Path,
@@ -238,7 +237,7 @@ def build_readonly_tools(
                 "`offset` must be >= 0.",
                 "Provide a non-negative offset.",
             )
-        
+
         if limit < MIN_SINGLE_READ_LIMIT:
             limit = MIN_SINGLE_READ_LIMIT
 
@@ -263,7 +262,10 @@ def build_readonly_tools(
                     _debug("read_file policy violation", reason)
                     return reason
 
-            _debug("Calling backend.read", f"{resolved_path}, offset={offset}, limit={limit}")
+            _debug(
+                "Calling backend.read",
+                f"{resolved_path}, offset={offset}, limit={limit}",
+            )
             result = backend.read(
                 resolved_path.as_posix(),
                 offset=offset,
@@ -328,7 +330,10 @@ def build_readonly_tools(
                     _debug("grep policy violation", reason)
                     return reason
 
-            _debug("Calling _regex_grep", f"pattern='{pattern}', path='{resolved_path}', glob='{glob}'")
+            _debug(
+                "Calling _regex_grep",
+                f"pattern='{pattern}', path='{resolved_path}', glob='{glob}'",
+            )
             result = _regex_grep(
                 pattern,
                 path=resolved_path,
