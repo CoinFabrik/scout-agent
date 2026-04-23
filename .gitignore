@@ -142,3 +142,8 @@ cython_debug/
 
 # OS
 .DS_Store
+
+benchmark/2025-02-blend-f23b3260763488f365ef6a95bfb139c95b0ed0f9/
+benchmark/2025-10-reflector-21676f3d353ed72e53d53ee9a3538542221a1cb2/
+benchmark/Trustless-Work-Smart-Escrow-5d4669d69ecdf1a8c788b5e644078f797f818850/
+**/.scout-ai/

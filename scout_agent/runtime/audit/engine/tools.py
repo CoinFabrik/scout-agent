@@ -174,6 +174,8 @@ def build_readonly_tools(
     policy_guard = _ConsecutivePolicyGuard()
 
     def resolve_in_scope(raw_path: str | None, *, field_name: str) -> Path:
+        if raw_path is not None:
+            raw_path = raw_path.strip('"').strip("'")
         candidate = grep_path if raw_path is None else Path(raw_path).expanduser()
         if not candidate.is_absolute():
             code = "PATH_NOT_ABSOLUTE"
