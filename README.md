@@ -15,6 +15,10 @@ Scout-Agent is built on a "Specialist" model rather than a general-purpose audit
 - **Expert: Time & State:** Analyzes state updates that depend on ledger time or sequence.
 - **Expert: Sentinel Logic:** Detects inconsistent handling of special values (e.g., `0`, `u32::MAX`) used to represent uninitialized states.
 
+## System Requirements
+
+- [ripgrep](https://github.com/BurntSushi/ripgrep): Required for efficient code searching.
+
 ## Installation
 
 ```bash
