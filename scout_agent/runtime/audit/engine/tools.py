@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
 from threading import Lock
+from typing import Generator
+
+DEBUG_MODE = os.environ.get("SCOUT_DEBUG", "false").lower() == "true"
+
+def _debug(msg: str, detail: str = "") -> None:
+    if DEBUG_MODE:
+        if detail:
+            print(f"[DEBUG] {msg}: {detail}")
+        else:
+            print(f"[DEBUG] {msg}")
+
 
 from deepagents.backends import FilesystemBackend
 from langchain.tools import tool
@@ -218,6 +230,7 @@ def build_readonly_tools(
         Do not repeat the exact same `(file_path, offset, limit)` span.
         Use `grep` when you need to locate candidate files or matching regions first.
         """
+        _debug(f"read_file: {file_path}, offset={offset}, limit={limit}")
         if offset < 0:
             policy_guard.record_error("INVALID_OFFSET")
             return _error(
@@ -247,14 +260,17 @@ def build_readonly_tools(
                     policy_guard=policy_guard,
                 )
                 if reason is not None:
+                    _debug("read_file policy violation", reason)
                     return reason
 
+            _debug("Calling backend.read", f"{resolved_path}, offset={offset}, limit={limit}")
             result = backend.read(
                 resolved_path.as_posix(),
                 offset=offset,
                 limit=limit,
             )
             rendered = result if isinstance(result, str) else str(result)
+            _debug("read_file result", rendered)
 
             if rendered.startswith("Error:") or rendered.startswith("Error["):
                 code = _extract_error_code(rendered)
@@ -298,6 +314,7 @@ def build_readonly_tools(
         Returns matches and file paths, not full file contents.
         After finding a promising result, use `read_file` to inspect the surrounding content.
         """
+        _debug(f"grep: pattern='{pattern}', path='{path}', glob='{glob}'")
         try:
             resolved_path = resolve_in_scope(path, field_name="path")
             with grep_policy.lock:
@@ -308,14 +325,17 @@ def build_readonly_tools(
                     policy_guard=policy_guard,
                 )
                 if reason is not None:
+                    _debug("grep policy violation", reason)
                     return reason
 
+            _debug("Calling _regex_grep", f"pattern='{pattern}', path='{resolved_path}', glob='{glob}'")
             result = _regex_grep(
                 pattern,
                 path=resolved_path,
                 glob=glob,
             )
             rendered = result if isinstance(result, str) else str(result)
+            _debug("grep result", rendered)
 
             if rendered.startswith("Error:") or rendered.startswith("Error["):
                 code = _extract_error_code(rendered)

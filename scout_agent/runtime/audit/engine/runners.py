@@ -1,6 +1,7 @@
 from scout_agent.runtime.audit.engine.context import AuditContext
 from pathlib import Path
 
+from scout_agent.runtime.audit.engine.tools import _debug
 from deepagents import create_deep_agent
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ProviderStrategy
@@ -73,6 +74,7 @@ def run_file_audit(
         current_file=current_file,
     )
 
+    _debug("Initiating LLM request via agent.invoke")
     result = agent.invoke(
         {
             "messages": [
@@ -141,6 +143,7 @@ def run_execution_path_consistency_audit(
         primary_actor_name="execution_path_consistency",
     )
 
+    _debug("Initiating LLM request via agent.invoke (execution_path_consistency)")
     result = agent.invoke(
         {
             "messages": [
