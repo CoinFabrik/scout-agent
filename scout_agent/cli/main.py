@@ -5,11 +5,12 @@ from collections.abc import Sequence
 
 from dotenv import load_dotenv
 
-from .audit import run_audit_command
-from .cli import parse_args
-from .console_reporting import ConsoleOutput
-from .errors import CommandError
-from .extract_facts import run_extract_facts_command
+from scout_agent.cli.commands.audit import run_audit_command
+from scout_agent.cli.commands.extract_facts import run_extract_facts_command
+from scout_agent.cli.errors import CommandError
+from scout_agent.cli.output.console import ConsoleOutput
+from scout_agent.cli.parser import parse_args
+
 
 
 def main(argv: Sequence[str] | None = None) -> int:

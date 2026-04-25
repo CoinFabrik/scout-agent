@@ -1,8 +1,8 @@
 from argparse import Namespace
 
-from scout_agent.app.settings import resolve_audit_config
-from scout_agent.app.console_reporting import ConsoleOutput
-from scout_agent.app.errors import CommandError
+from scout_agent.config.settings import resolve_audit_config
+from scout_agent.cli.output.console import ConsoleOutput
+from scout_agent.cli.errors import CommandError
 from scout_agent.domain.audit import AuditState
 from scout_agent.llm.providers import ProviderError
 from scout_agent.runtime.audit.engine.graph import AuditContext, run_audit

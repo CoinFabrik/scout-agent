@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from scout_agent.app.audit_ui import AuditProgressSession, PlainAuditProgressSession
-from scout_agent.domain.audit import AuditState
+from scout_agent.cli.output.audit_progress import AuditProgressSession, PlainAuditProgressSession
+from scout_agent.domain.audit import AuditState, latest_unresolved_failures
 from scout_agent.domain.facts import aggregate_facts_file_path
 from scout_agent.runtime.audit.io.reporting import AuditProgressReporter
 from scout_agent.runtime.extract.reporting import ExtractProgressReporter
@@ -76,6 +76,12 @@ class ConsoleOutput:
             f"{final_state['execution_path_consistency_completed']}",
             file=self._stdout,
         )
+        unresolved_failures = latest_unresolved_failures(final_state)
+        if unresolved_failures:
+            print(
+                f"Unresolved failures: {len(unresolved_failures)}",
+                file=self._stdout,
+            )
 
     def print_error(self, message: str) -> None:
         print(f"Error: {message}", file=self._stderr)
