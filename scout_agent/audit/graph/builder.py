@@ -7,16 +7,16 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph, RunnableConfig
 from langgraph.types import Send
 
-from scout_agent.runtime.audit.engine.context import AuditContext
-from scout_agent.runtime.audit.engine.runners import (
+from scout_agent.audit.graph.context import AuditContext
+from scout_agent.audit.agents.runners import (
     run_file_audit,
     run_execution_path_consistency_audit,
     _relativize_findings,
 )
 from scout_agent.domain.audit import AuditFailure, AuditState
-from scout_agent.runtime.audit.engine.experts import build_expert_subagents
-from scout_agent.runtime.audit.engine.memory import get_sqlite_saver
-from scout_agent.runtime.audit.engine.tools import PolicyViolationError
+from scout_agent.audit.agents.experts import build_expert_subagents
+from scout_agent.audit.graph.memory import get_sqlite_saver
+from scout_agent.audit.tools.readonly import PolicyViolationError
 
 _EPC_RETRY_KEY = "__execution_path_consistency__"
 

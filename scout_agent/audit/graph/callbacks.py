@@ -7,7 +7,7 @@ from uuid import UUID
 
 from langchain_core.callbacks.base import BaseCallbackHandler
 
-from scout_agent.runtime.audit.io.reporting import AuditProgressReporter
+from scout_agent.audit.io.reporting import AuditProgressReporter
 
 
 @dataclass(frozen=True, slots=True)

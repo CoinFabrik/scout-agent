@@ -35,7 +35,8 @@ include = ["scout_agent*"]
 
 [tool.setuptools.package-data]
 scout_agent = [
-    "runtime/audit/prompts/*.md",
+    "audit/prompts/*.md",
+    "extract/prompts/*.md",
 ]
 
 [tool.pytest.ini_options]

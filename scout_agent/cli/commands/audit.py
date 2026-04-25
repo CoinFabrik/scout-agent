@@ -5,9 +5,9 @@ from scout_agent.cli.output.console import ConsoleOutput
 from scout_agent.cli.errors import CommandError
 from scout_agent.domain.audit import AuditState
 from scout_agent.llm.providers import ProviderError
-from scout_agent.runtime.audit.engine.graph import AuditContext, run_audit
-from scout_agent.runtime.audit.io.report_writer import write_report
-from scout_agent.runtime.audit.run import initialize_audit
+from scout_agent.audit.graph.builder import AuditContext, run_audit
+from scout_agent.audit.io.report_writer import write_report
+from scout_agent.audit.initialization import initialize_audit
 
 
 def run_audit_command(args: Namespace, output: ConsoleOutput) -> int:

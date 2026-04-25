@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, TypeVar
 
-from scout_agent.runtime.audit.io.reporting import (
+from scout_agent.audit.io.reporting import (
     AuditProgressReporter,
 )
 

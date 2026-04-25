@@ -13,7 +13,7 @@ from scout_agent.domain.facts import (
     load_aggregate_facts_document,
     load_facts_document,
 )
-from scout_agent.runtime.source.scope import discover_in_scope_files_or_raise
+from scout_agent.rust_analysis.scope import discover_in_scope_files_or_raise
 
 
 @dataclass(frozen=True, slots=True)

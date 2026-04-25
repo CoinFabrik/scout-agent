@@ -1,5 +1,5 @@
 from scout_agent.domain.audit import AuditState
-from scout_agent.runtime.audit.io.reporting import AuditProgressReporter
+from scout_agent.audit.io.reporting import AuditProgressReporter
 from dataclasses import dataclass
 from scout_agent.domain.facts import AggregateFactsDocument
 from pathlib import Path

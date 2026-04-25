@@ -8,8 +8,8 @@ from langchain.agents import create_agent
 
 from scout_agent.domain.audit import ExpertResult
 from scout_agent.llm.providers import build_chat_model
-from scout_agent.runtime.audit.engine.tools import build_readonly_tools
-from scout_agent.runtime.audit.prompts.audit_prompts import build_expert_system_prompt
+from scout_agent.audit.tools.readonly import build_readonly_tools
+from scout_agent.audit.prompts.audit_prompts import build_expert_system_prompt
 
 
 @dataclass(frozen=True, slots=True)

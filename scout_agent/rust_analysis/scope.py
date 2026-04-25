@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Collection
 from pathlib import Path
 
-from scout_agent.runtime.source.discovery import DiscoveredRustFile, discover_rust_files
+from scout_agent.rust_analysis.discovery import DiscoveredRustFile, discover_rust_files
 
 
 def discover_in_scope_files_or_raise(

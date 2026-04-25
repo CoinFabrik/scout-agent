@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from scout_agent.app.settings import ExtractSettings
+from scout_agent.config.settings import ExtractSettings
 from scout_agent.domain.facts import (
     aggregate_facts_file_path,
     compose_aggregate_facts_document,
@@ -10,9 +10,9 @@ from scout_agent.domain.facts import (
     write_facts_document,
 )
 from scout_agent.llm.providers import resolve_model_identifier
-from scout_agent.runtime.extract.execution import execute_extract_tasks
-from scout_agent.runtime.extract.reporting import ExtractProgressReporter
-from scout_agent.runtime.source.scope import discover_in_scope_files_or_raise
+from scout_agent.extract.execution import execute_extract_tasks
+from scout_agent.extract.reporting import ExtractProgressReporter
+from scout_agent.rust_analysis.scope import discover_in_scope_files_or_raise
 
 
 @dataclass(frozen=True, slots=True)

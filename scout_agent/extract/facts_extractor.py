@@ -13,7 +13,7 @@ from tenacity.wait import wait_exponential_jitter
 from scout_agent.domain.facts import FunctionSummary
 from scout_agent.llm.providers import build_chat_model, is_gemini_model
 from scout_agent.prompt_loader import load_prompt_asset
-from scout_agent.runtime.source.rust_parser import ParsedRustFile, ParsedRustFunction
+from scout_agent.rust_analysis.rust_parser import ParsedRustFile, ParsedRustFunction
 
 EXTRACTION_RETRY_NOTE = (
     "Previous response used invalid function_key values or malformed structure. "
@@ -204,7 +204,7 @@ def _merge_extracted_file_facts(
 @cache
 def _load_extract_facts_system_prompt() -> str:
     return load_prompt_asset(
-        Path(__file__).resolve().parent.parent / "audit" / "prompts",
+        Path(__file__).resolve().parent / "prompts",
         "extract_facts_system.md",
         empty_error_label="Extract facts system prompt",
     )

@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from scout_agent.domain.facts import FactsDocument
-from scout_agent.runtime.extract.facts_extractor import extract_file_facts_with_llm
-from scout_agent.runtime.extract.reporting import ExtractProgressReporter
-from scout_agent.runtime.source.discovery import DiscoveredRustFile
-from scout_agent.runtime.source.rust_parser import parse_rust_source
+from scout_agent.extract.facts_extractor import extract_file_facts_with_llm
+from scout_agent.extract.reporting import ExtractProgressReporter
+from scout_agent.rust_analysis.discovery import DiscoveredRustFile
+from scout_agent.rust_analysis.rust_parser import parse_rust_source
 from scout_agent.time_utils import utc_now_iso
 
 

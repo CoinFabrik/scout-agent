@@ -5,7 +5,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Final
 from scout_agent.paths import validate_project_root
-from scout_agent.runtime.source.source_filter import (
+from scout_agent.rust_analysis.source_filter import (
     build_analysis_source,
     is_test_rust_path,
 )

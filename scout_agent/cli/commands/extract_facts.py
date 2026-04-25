@@ -3,7 +3,7 @@ from argparse import Namespace
 from scout_agent.cli.output.console import ConsoleOutput
 from scout_agent.cli.errors import CommandError
 from scout_agent.llm.providers import ProviderError
-from scout_agent.runtime.extract.pipeline import run_extract_facts_pipeline
+from scout_agent.extract.service import run_extract_facts_pipeline
 
 
 def run_extract_facts_command(args: Namespace, output: ConsoleOutput) -> int:

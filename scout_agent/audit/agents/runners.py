@@ -1,4 +1,4 @@
-from scout_agent.runtime.audit.engine.context import AuditContext
+from scout_agent.audit.graph.context import AuditContext
 from pathlib import Path
 
 from deepagents import create_deep_agent
@@ -13,11 +13,11 @@ from scout_agent.domain.facts import (
     load_facts_document,
 )
 from scout_agent.llm.providers import build_chat_model
-from scout_agent.runtime.audit.engine.audit_callbacks import RuntimeProgressHandler
-from scout_agent.runtime.audit.engine.experts import SUBAGENT_MANIFEST, CompiledSubAgent
-from scout_agent.runtime.audit.engine.memory import get_sqlite_saver
-from scout_agent.runtime.audit.engine.tools import build_readonly_tools
-from scout_agent.runtime.audit.prompts.audit_prompts import (
+from scout_agent.audit.graph.callbacks import RuntimeProgressHandler
+from scout_agent.audit.agents.experts import SUBAGENT_MANIFEST, CompiledSubAgent
+from scout_agent.audit.graph.memory import get_sqlite_saver
+from scout_agent.audit.tools.readonly import build_readonly_tools
+from scout_agent.audit.prompts.audit_prompts import (
     build_execution_path_consistency_audit_prompt,
     build_execution_path_consistency_system_prompt,
     build_parent_audit_prompt,

@@ -7,7 +7,7 @@ from scout_agent.domain.facts import (
     FunctionSummary,
     present_summary_fields,
 )
-from scout_agent.runtime.audit.prompts.prompt_utils import append_extra_prompt
+from scout_agent.audit.prompts.prompt_utils import append_extra_prompt
 from scout_agent.prompt_loader import (
     load_optional_prompt_asset,
     load_prompt_asset,

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Final
 
 from tree_sitter import Node
-from scout_agent.runtime.source.tree_sitter_utils import (
+from scout_agent.rust_analysis.tree_sitter_utils import (
     RUST_LANGUAGE,
     build_parser,
     node_text,
