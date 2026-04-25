@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Final
 
-from .llm_modes import DEFAULT_LLM_MODE
+from scout_agent.config.llm_modes import DEFAULT_LLM_MODE
+
 
 DEFAULT_SEED: Final[int] = 42
 
