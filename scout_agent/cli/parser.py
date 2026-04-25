@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from scout_agent.configuration.llm_modes import LLM_MODES
+from scout_agent.config.llm_modes import LLM_MODES
 
 
 def build_parser() -> argparse.ArgumentParser:

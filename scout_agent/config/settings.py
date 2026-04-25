@@ -1,8 +1,8 @@
 from argparse import Namespace
 from dataclasses import dataclass
 from pathlib import Path
-from scout_agent.configuration.scout_config import load_default_scout_config
-from scout_agent.configuration.settings import (
+from scout_agent.config.scout_config import load_default_scout_config
+from scout_agent.config.resolvers import (
     resolve_agent_read_limit,
     resolve_agent_grep_limit,
     resolve_extra_prompt_text,

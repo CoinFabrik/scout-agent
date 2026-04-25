@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Final
 from collections.abc import Mapping
 
-from scout_agent.path_utils import validate_project_root
+from scout_agent.paths import validate_project_root
 from .llm_modes import DEFAULT_LLM_MODE, normalize_llm_mode
 
 DEFAULT_FACTS_DIRECTORY: Final[str] = ".scout-ai/facts"

@@ -6,7 +6,7 @@ from typing import Final
 
 from scout_agent.domain.audit import AuditState, Finding
 from scout_agent.domain.facts import AggregateFactsDocument
-from scout_agent.runtime.time_utils import utc_now_iso
+from scout_agent.time_utils import utc_now_iso
 
 SEVERITY_ORDER: Final[dict[str, int]] = {
     "CRITICAL": 0,

@@ -9,7 +9,7 @@ from scout_agent.runtime.extract.facts_extractor import extract_file_facts_with_
 from scout_agent.runtime.extract.reporting import ExtractProgressReporter
 from scout_agent.runtime.source.discovery import DiscoveredRustFile
 from scout_agent.runtime.source.rust_parser import parse_rust_source
-from scout_agent.runtime.time_utils import utc_now_iso
+from scout_agent.time_utils import utc_now_iso
 
 
 @dataclass(frozen=True, slots=True)

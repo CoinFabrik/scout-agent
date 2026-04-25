@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scout_agent.runtime.progress import LineProgressSink
+from scout_agent.progress import LineProgressSink
 
 
 class ExtractProgressReporter:

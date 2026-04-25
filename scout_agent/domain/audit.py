@@ -51,3 +51,19 @@ class AuditState(TypedDict):
     verified_findings: Annotated[list[Finding], operator.add]
     failures: Annotated[list[AuditFailure], operator.add]
     retry_generations: Annotated[dict[str, int], operator.or_]
+
+
+def latest_unresolved_failures(state: AuditState) -> list[AuditFailure]:
+    retry_generations = state.get("retry_generations") or {}
+    if not retry_generations:
+        return []
+
+    latest_by_path: dict[str, AuditFailure] = {}
+    for failure in state.get("failures") or []:
+        latest_by_path[failure["relative_path"]] = failure
+
+    return [
+        failure
+        for path, failure in latest_by_path.items()
+        if path in retry_generations
+    ]

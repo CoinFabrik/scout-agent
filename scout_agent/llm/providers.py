@@ -2,7 +2,8 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from scout_agent.configuration.llm_config import get_model_kwargs
+from scout_agent.llm.model_config import get_model_kwargs
+
 
 
 DEFAULT_SDK_MAX_RETRIES = 2

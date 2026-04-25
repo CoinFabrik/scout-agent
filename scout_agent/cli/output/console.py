@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import TextIO
 
 from scout_agent.cli.output.audit_progress import AuditProgressSession, PlainAuditProgressSession
-from scout_agent.domain.audit import AuditState, latest_unresolved_failures
+from scout_agent.domain.audit import AuditState
 from scout_agent.domain.facts import aggregate_facts_file_path
 from scout_agent.runtime.audit.io.reporting import AuditProgressReporter
 from scout_agent.runtime.extract.reporting import ExtractProgressReporter
-from scout_agent.runtime.progress import LineProgressSink, PlainLineProgressSink
+from scout_agent.progress import LineProgressSink, PlainLineProgressSink
 from scout_agent.runtime.extract.pipeline import ExtractFactsPipelineResult
 
 

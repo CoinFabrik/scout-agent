@@ -5,7 +5,7 @@ from pathlib import Path
 from threading import Lock
 
 from scout_agent.domain.audit import Finding
-from scout_agent.runtime.progress import LineProgressSink
+from scout_agent.progress import LineProgressSink
 
 
 def format_audit_started_line(

@@ -12,7 +12,7 @@ from tenacity.wait import wait_exponential_jitter
 
 from scout_agent.domain.facts import FunctionSummary
 from scout_agent.llm.providers import build_chat_model, is_gemini_model
-from scout_agent.runtime.prompt_loader import load_prompt_asset
+from scout_agent.prompt_loader import load_prompt_asset
 from scout_agent.runtime.source.rust_parser import ParsedRustFile, ParsedRustFunction
 
 EXTRACTION_RETRY_NOTE = (
