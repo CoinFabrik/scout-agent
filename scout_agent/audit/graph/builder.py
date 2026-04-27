@@ -95,9 +95,7 @@ def _make_audit_file_node(
                 outer_thread_id=outer_thread_id,
                 generation=generation,
             )
-            findings = _relativize_findings(
-                response.findings, runtime.project_root
-            )
+            findings = _relativize_findings(response.findings, runtime.project_root)
             for finding in findings:
                 runtime.reporter.finding_verified(
                     total_verified_findings=0,
@@ -127,9 +125,7 @@ def _make_audit_file_node(
                 "message": str(exc),
             }
             retry_generation = (
-                {relative_path: generation + 1}
-                if _is_toxic_failure(exc)
-                else {}
+                {relative_path: generation + 1} if _is_toxic_failure(exc) else {}
             )
             return {
                 "failures": [failure],
@@ -158,9 +154,7 @@ def _make_epc_node(
                 outer_thread_id=outer_thread_id,
                 generation=generation,
             )
-            findings = _relativize_findings(
-                response.findings, runtime.project_root
-            )
+            findings = _relativize_findings(response.findings, runtime.project_root)
             for finding in findings:
                 runtime.reporter.finding_verified(
                     total_verified_findings=0,
@@ -187,9 +181,7 @@ def _make_epc_node(
                 "message": str(exc),
             }
             retry_generation = (
-                {_EPC_RETRY_KEY: generation + 1}
-                if _is_toxic_failure(exc)
-                else {}
+                {_EPC_RETRY_KEY: generation + 1} if _is_toxic_failure(exc) else {}
             )
             return {
                 "failures": [failure],

@@ -4,7 +4,6 @@ from typing import Any, Final
 
 from scout_agent.config.llm_modes import DEFAULT_LLM_MODE
 
-
 DEFAULT_SEED: Final[int] = 42
 
 # Keep model-family matching coarse and conservative. OpenAI parameter support

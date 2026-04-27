@@ -15,7 +15,9 @@ _ALLOWED_MODULES = [
 ]
 
 
-def get_sqlite_saver(db_path: str | Path = ".scout-ai/scout_audit_memory.sqlite") -> SqliteSaver:
+def get_sqlite_saver(
+    db_path: str | Path = ".scout-ai/scout_audit_memory.sqlite",
+) -> SqliteSaver:
     """
     Returns a LangGraph SqliteSaver checkpointer for the given *db_path*.
 
@@ -36,4 +38,3 @@ def get_sqlite_saver(db_path: str | Path = ".scout-ai/scout_audit_memory.sqlite"
         _savers[resolved_key] = saver
 
     return _savers[resolved_key]
-

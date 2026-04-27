@@ -126,7 +126,9 @@ def _run_audit_graph(*, runtime: AuditContext) -> AuditState:
             else cast(AuditState, graph.invoke(resume_input, config=run_config))
         )
     else:
-        result = cast(AuditState, graph.invoke(runtime.initial_state, config=run_config))
+        result = cast(
+            AuditState, graph.invoke(runtime.initial_state, config=run_config)
+        )
 
     return result
 

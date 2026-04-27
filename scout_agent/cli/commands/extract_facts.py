@@ -1,6 +1,9 @@
 from argparse import Namespace
 
-from scout_agent.config.settings import ResolvedExtractSettings, resolve_extract_settings
+from scout_agent.config.settings import (
+    ResolvedExtractSettings,
+    resolve_extract_settings,
+)
 from scout_agent.cli.output.console import ConsoleOutput
 from scout_agent.cli.errors import CommandError
 from scout_agent.extract.service import ExtractRequest, run_extract_service

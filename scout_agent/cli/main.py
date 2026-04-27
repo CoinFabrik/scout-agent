@@ -12,7 +12,6 @@ from scout_agent.cli.output.console import ConsoleOutput
 from scout_agent.cli.parser import parse_args
 
 
-
 def main(argv: Sequence[str] | None = None) -> int:
     load_dotenv()
     args = parse_args(argv)

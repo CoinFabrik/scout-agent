@@ -125,9 +125,9 @@ def _validate_aggregate_facts_document(
     aggregate_facts_document: AggregateFactsDocument,
     expected_project_root: Path,
 ) -> None:
-    recorded_project_root = Path(
-        aggregate_facts_document.project_root
-    ).expanduser().resolve()
+    recorded_project_root = (
+        Path(aggregate_facts_document.project_root).expanduser().resolve()
+    )
     if recorded_project_root != expected_project_root:
         raise ValueError(
             "Aggregate FACTS document project root does not match the requested audit root. "

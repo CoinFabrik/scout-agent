@@ -4,7 +4,10 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from scout_agent.cli.output.audit_progress import AuditProgressSession, PlainAuditProgressSession
+from scout_agent.cli.output.audit_progress import (
+    AuditProgressSession,
+    PlainAuditProgressSession,
+)
 from scout_agent.domain.audit import AuditState, latest_unresolved_failures
 from scout_agent.domain.facts import aggregate_facts_file_path
 from scout_agent.audit.io.reporting import AuditProgressReporter
@@ -91,6 +94,4 @@ class ConsoleOutput:
         *,
         line_sink: LineProgressSink,
     ) -> PlainAuditProgressSession:
-        return PlainAuditProgressSession(
-            reporter=AuditProgressReporter(line_sink)
-        )
+        return PlainAuditProgressSession(reporter=AuditProgressReporter(line_sink))

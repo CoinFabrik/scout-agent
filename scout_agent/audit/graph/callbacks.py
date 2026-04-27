@@ -128,7 +128,7 @@ class RuntimeProgressHandler(BaseCallbackHandler):
         line_start, line_end = _resolve_line_range(safe_inputs)
         offset = _coerce_optional_int(safe_inputs.get("offset"))
         limit = _coerce_optional_int(safe_inputs.get("limit"))
-        
+
         pattern = safe_inputs.get("pattern")
         if not isinstance(pattern, str):
             pattern = None
