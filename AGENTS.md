@@ -14,7 +14,7 @@ Core package code lives in `scout_agent/`. The benchmark Soroban contract is in 
 - Install locally with dev tooling: `python -m pip install -e '.[dev]'`
 - Run tests: `python -m pytest`
 - Run the CLI after install: `scout-agent --help`
-- Run without installing an entry point: `python -m scout_agent.app.main --help`
+- Run without installing an entry point: `python -m scout_agent.cli.main --help`
 - Extract facts: `scout-agent extract-facts /path/to/soroban-project --model provider:model`
 - Audit: `scout-agent audit /path/to/soroban-project --model provider:model`
 

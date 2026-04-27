@@ -28,18 +28,19 @@ version = "0.1.0"
 dev = ["pytest-cov>=5.0.0", "pytest>=8.2.0"]
 
 [project.scripts]
-scout-agent = "scout_agent.app.main:main"
+scout-agent = "scout_agent.cli.main:main"
 
 [tool.setuptools.packages.find]
 include = ["scout_agent*"]
 
 [tool.setuptools.package-data]
 scout_agent = [
-    "runtime/audit/prompts/*.md",
-    "runtime/audit/prompts/*/*.md",
-    "runtime/audit/prompts/*/*/*.md",
-    "runtime/audit/prompts/*/*/*/*.md",
-    "runtime/audit/prompts/*/*/*/*/*.md",
+    "audit/prompts/*.md",
+    "audit/prompts/*/*.md",
+    "audit/prompts/*/*/*.md",
+    "audit/prompts/*/*/*/*.md",
+    "audit/prompts/*/*/*/*/*.md",
+    "extract/prompts/*.md",
 ]
 
 [tool.pytest.ini_options]

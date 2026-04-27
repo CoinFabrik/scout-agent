@@ -7,7 +7,6 @@ from typing import Final, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
 FACTS_SCHEMA_VERSION: Final[str] = "3"
 AGGREGATE_FACTS_FILENAME: Final[str] = "FACTS.yml"
 OPTIONAL_FUNCTION_SUMMARY_FIELDS: Final[tuple[str, ...]] = (
@@ -135,7 +134,9 @@ def compose_aggregate_facts_document(
             raise ValueError("All facts documents must share the same llm_mode.")
 
     return AggregateFactsDocument(
-        generated_at_utc=max(document.generated_at_utc for document in sorted_documents),
+        generated_at_utc=max(
+            document.generated_at_utc for document in sorted_documents
+        ),
         project_root=first_document.project_root,
         model=first_document.model,
         llm_mode=first_document.llm_mode,
@@ -215,7 +216,9 @@ def _normalize_function_mapping(
         if not cleaned_key:
             raise ValueError(f"Function keys in {document_kind} must be non-empty.")
         if cleaned_key in normalized:
-            raise ValueError(f"Duplicate function key in {document_kind}: {cleaned_key}")
+            raise ValueError(
+                f"Duplicate function key in {document_kind}: {cleaned_key}"
+            )
         normalized[cleaned_key] = summary
 
     return normalized

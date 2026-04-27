@@ -5,7 +5,6 @@ from typing import Annotated, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
 Severity = Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 ExpertStatus = Literal["VULNERABLE", "SAFE", "NEEDS_INFO"]
 
@@ -51,3 +50,17 @@ class AuditState(TypedDict):
     verified_findings: Annotated[list[Finding], operator.add]
     failures: Annotated[list[AuditFailure], operator.add]
     retry_generations: Annotated[dict[str, int], operator.or_]
+
+
+def latest_unresolved_failures(state: AuditState) -> list[AuditFailure]:
+    latest_by_path: dict[str, AuditFailure] = {}
+    for failure in state.get("failures") or []:
+        latest_by_path[failure["relative_path"]] = failure
+
+    pending_files = set(state.get("files_to_review") or [])
+    if not state.get("execution_path_consistency_completed"):
+        pending_files.add("execution_path_consistency")
+
+    return [
+        failure for path, failure in latest_by_path.items() if path in pending_files
+    ]

@@ -1,0 +1,10 @@
+{
+  "include": ["scout_agent", "tests"],
+  "exclude": [
+    "build",
+    "dist",
+    ".venv",
+    ".pytest_cache",
+    "**/__pycache__"
+  ]
+}

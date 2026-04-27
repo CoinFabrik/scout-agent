@@ -1,0 +1,119 @@
+from pathlib import Path
+from typing import Any, cast
+
+from deepagents import create_deep_agent
+from langchain.agents.structured_output import ProviderStrategy
+from langchain_core.messages import HumanMessage
+
+from scout_agent.audit.agents.experts import SUBAGENT_MANIFEST, CompiledSubAgent
+from scout_agent.audit.graph.callbacks import RuntimeProgressHandler
+from scout_agent.audit.graph.context import AuditContext
+from scout_agent.audit.graph.memory import get_sqlite_saver
+from scout_agent.audit.prompts.audit_prompts import (
+    build_parent_audit_prompt,
+    build_parent_system_prompt,
+)
+from scout_agent.audit.prompts.prompt_utils import escape_prompt_text
+from scout_agent.audit.structured_output import parse_structured_audit_response
+from scout_agent.audit.tools.readonly import build_readonly_tools
+from scout_agent.domain.audit import FileAuditResponse
+from scout_agent.domain.facts import (
+    FunctionSummary,
+    facts_file_path,
+    load_facts_document,
+)
+from scout_agent.llm.providers import build_chat_model
+
+
+def run_file_audit(
+    *,
+    runtime: AuditContext,
+    current_file: str,
+    expert_subagents: list[CompiledSubAgent],
+    outer_thread_id: str,
+    generation: int,
+) -> FileAuditResponse:
+    current_file_path = (runtime.project_root / current_file).resolve()
+    current_file_facts = _load_current_file_facts(
+        facts_root=runtime.facts_path,
+        current_file=current_file,
+    )
+
+    system_prompt = build_parent_system_prompt(
+        current_file=current_file_path.as_posix(),
+        current_file_facts=current_file_facts,
+        agent_grep_limit=runtime.agent_grep_limit,
+        extra_prompt=runtime.extra_prompt,
+    )
+    model = build_chat_model(runtime.model_name, runtime.llm_mode)
+
+    memory_dir = runtime.project_root / ".scout-ai"
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    checkpointer = get_sqlite_saver(memory_dir / ".audit_memory.sqlite")
+
+    agent = create_deep_agent(
+        model=model,
+        system_prompt=escape_prompt_text(system_prompt),
+        tools=build_readonly_tools(
+            root_dir=runtime.project_root,
+            scope_path=current_file_path,
+            agent_read_limit=runtime.agent_read_limit,
+            agent_grep_limit=runtime.agent_grep_limit,
+            default_grep_path=current_file_path.as_posix(),
+        ),
+        subagents=cast(Any, expert_subagents),
+        response_format=ProviderStrategy(FileAuditResponse, strict=True),
+        name="scout-agent",
+        checkpointer=checkpointer,
+    )
+
+    callback_handler = RuntimeProgressHandler(
+        reporter=runtime.reporter,
+        expert_names={spec.name for spec in SUBAGENT_MANIFEST},
+        current_file=current_file,
+    )
+
+    result = agent.invoke(
+        {
+            "messages": [
+                HumanMessage(
+                    content=build_parent_audit_prompt(
+                        current_file=current_file_path.as_posix(),
+                        extra_prompt=runtime.extra_prompt,
+                    )
+                )
+            ]
+        },
+        config={
+            "callbacks": [callback_handler],
+            "recursion_limit": runtime.recursion_limit,
+            "configurable": {
+                "thread_id": _build_file_thread_id(
+                    outer_thread_id=outer_thread_id,
+                    current_file=current_file,
+                    generation=generation,
+                )
+            },
+        },
+    )
+    return parse_structured_audit_response(
+        result=result,
+        actor_name=current_file,
+    )
+
+
+def _build_file_thread_id(
+    *,
+    outer_thread_id: str,
+    current_file: str,
+    generation: int,
+) -> str:
+    return f"{outer_thread_id}:file:{current_file}:g{generation}"
+
+
+def _load_current_file_facts(
+    *,
+    facts_root: Path,
+    current_file: str,
+) -> dict[str, FunctionSummary]:
+    return load_facts_document(facts_file_path(facts_root, current_file)).functions
