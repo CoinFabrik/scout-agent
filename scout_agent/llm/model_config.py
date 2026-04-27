@@ -9,10 +9,8 @@ DEFAULT_SEED: Final[int] = 42
 # Keep model-family matching coarse and conservative. OpenAI parameter support
 # changes across model families, so unknown families should receive no defaults.
 #
-# This project currently routes OpenAI calls through ChatOpenAI, which uses the
-# Chat Completions surface. GPT-5.4 tool flows with reasoning must use the
-# Responses API, so only the GPT-5.1 line gets the automatic reasoning default
-# on this transport.
+# Reasoning-capable OpenAI models use reasoning_effort; deterministic chat
+# models use the seeded sampling parameters below.
 OPENAI_REASONING_MODEL_PREFIXES: Final[tuple[str, ...]] = (
     "gpt-5.4",
     "o1",
