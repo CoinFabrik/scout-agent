@@ -10,6 +10,7 @@ from scout_agent.domain.audit import ExpertResult
 from scout_agent.llm.providers import build_chat_model
 from scout_agent.audit.tools.readonly import build_readonly_tools
 from scout_agent.audit.prompts.audit_prompts import build_expert_system_prompt
+from scout_agent.audit.prompts.prompt_utils import escape_prompt_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,11 +57,9 @@ def build_expert_subagents(
             extra_prompt=extra_prompt,
         )
 
-        # Escape braces for LangChain prompt template interpolation
-        escaped_system_prompt = full_prompt.replace("{", "{{").replace("}", "}}")
         runnable = create_agent(
             model=model,
-            system_prompt=escaped_system_prompt,
+            system_prompt=escape_prompt_text(full_prompt),
             response_format=ProviderStrategy(ExpertResult, strict=True),
             tools=build_readonly_tools(
                 root_dir=project_root,

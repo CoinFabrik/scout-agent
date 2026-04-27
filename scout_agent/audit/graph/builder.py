@@ -4,16 +4,14 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
 
-from scout_agent.audit.graph.context import AuditContext
-from scout_agent.audit.agents.runners import (
-    run_file_audit,
-    run_execution_path_consistency_audit,
-    _relativize_findings,
-)
-from scout_agent.domain.audit import AuditFailure, AuditState
+from scout_agent.audit.agents.execution_path import run_execution_path_consistency_audit
 from scout_agent.audit.agents.experts import build_expert_subagents
+from scout_agent.audit.agents.file_audit import run_file_audit
+from scout_agent.audit.findings import relativize_findings
+from scout_agent.audit.graph.context import AuditContext
 from scout_agent.audit.graph.memory import get_sqlite_saver
 from scout_agent.audit.tools.policies import PolicyViolationError
+from scout_agent.domain.audit import AuditFailure, AuditState
 
 _EPC_RETRY_KEY = "__execution_path_consistency__"
 
@@ -95,7 +93,7 @@ def _make_audit_file_node(
                 outer_thread_id=outer_thread_id,
                 generation=generation,
             )
-            findings = _relativize_findings(response.findings, runtime.project_root)
+            findings = relativize_findings(response.findings, runtime.project_root)
             for finding in findings:
                 runtime.reporter.finding_verified(
                     total_verified_findings=0,
@@ -139,7 +137,6 @@ def _make_audit_file_node(
 
 def _make_epc_node(
     runtime: AuditContext,
-    allowed_paths: list[str],
     outer_thread_id: str,
 ):
     """Factory: returns the execution path consistency node function with runtime in closure."""
@@ -150,11 +147,10 @@ def _make_epc_node(
             runtime.reporter.execution_path_consistency_started()
             response = run_execution_path_consistency_audit(
                 runtime=runtime,
-                allowed_paths=allowed_paths,
                 outer_thread_id=outer_thread_id,
                 generation=generation,
             )
-            findings = _relativize_findings(response.findings, runtime.project_root)
+            findings = relativize_findings(response.findings, runtime.project_root)
             for finding in findings:
                 runtime.reporter.finding_verified(
                     total_verified_findings=0,
