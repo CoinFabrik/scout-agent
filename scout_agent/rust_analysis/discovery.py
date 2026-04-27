@@ -1,7 +1,6 @@
 import os
 from collections.abc import Collection
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from typing import Final
 from scout_agent.paths import validate_project_root

@@ -21,6 +21,10 @@ def format_audit_started_line(
     )
 
 
+def format_audit_thread_started_line(*, thread_id: str) -> str:
+    return f"Thread ID: {thread_id}"
+
+
 def format_audit_file_started_line(
     *,
     index: int,
@@ -175,6 +179,9 @@ class AuditProgressReporter:
             ),
             total=total_files,
         )
+
+    def audit_thread_started(self, *, thread_id: str) -> None:
+        self._emit(format_audit_thread_started_line(thread_id=thread_id))
 
     def file_started(
         self,

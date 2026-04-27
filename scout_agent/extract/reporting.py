@@ -5,6 +5,49 @@ from pathlib import Path
 from scout_agent.progress import LineProgressSink
 
 
+def format_extract_started_line(
+    *,
+    project_root: Path,
+    total_files: int,
+    model_name: str,
+    llm_mode: str,
+) -> str:
+    return (
+        "Starting extract-facts for "
+        f"{project_root} with {total_files} file(s) using {model_name} [{llm_mode}]"
+    )
+
+
+def format_extract_file_started_line(
+    *,
+    index: int,
+    total: int,
+    relative_path: str,
+) -> str:
+    return f"Extracting {index}/{total}: {relative_path}"
+
+
+def format_extract_file_completed_line(
+    *,
+    index: int,
+    total: int,
+    relative_path: str,
+    function_count: int,
+) -> str:
+    return f"Completed {index}/{total}: {relative_path} ({function_count} function(s))"
+
+
+def format_extract_file_failed_line(
+    *,
+    index: int,
+    total: int,
+    relative_path: str,
+    error_type: str,
+    message: str,
+) -> str:
+    return f"Failed {index}/{total}: {relative_path} ({error_type}: {message})"
+
+
 class ExtractProgressReporter:
     def __init__(self, sink: LineProgressSink) -> None:
         self._sink = sink
@@ -18,8 +61,12 @@ class ExtractProgressReporter:
         llm_mode: str,
     ) -> None:
         self._sink.emit(
-            "Starting extract-facts for "
-            f"{project_root} with {total_files} file(s) using {model_name} [{llm_mode}]"
+            format_extract_started_line(
+                project_root=project_root,
+                total_files=total_files,
+                model_name=model_name,
+                llm_mode=llm_mode,
+            )
         )
 
     def file_started(
@@ -29,7 +76,13 @@ class ExtractProgressReporter:
         total: int,
         relative_path: str,
     ) -> None:
-        self._sink.emit(f"Extracting {index}/{total}: {relative_path}")
+        self._sink.emit(
+            format_extract_file_started_line(
+                index=index,
+                total=total,
+                relative_path=relative_path,
+            )
+        )
 
     def file_completed(
         self,
@@ -40,7 +93,12 @@ class ExtractProgressReporter:
         function_count: int,
     ) -> None:
         self._sink.emit(
-            f"Completed {index}/{total}: {relative_path} ({function_count} function(s))",
+            format_extract_file_completed_line(
+                index=index,
+                total=total,
+                relative_path=relative_path,
+                function_count=function_count,
+            ),
         )
 
     def file_failed(
@@ -53,5 +111,11 @@ class ExtractProgressReporter:
         message: str,
     ) -> None:
         self._sink.emit(
-            f"Failed {index}/{total}: {relative_path} ({error_type}: {message})"
+            format_extract_file_failed_line(
+                index=index,
+                total=total,
+                relative_path=relative_path,
+                error_type=error_type,
+                message=message,
+            )
         )

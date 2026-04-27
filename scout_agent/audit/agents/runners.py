@@ -1,5 +1,6 @@
 from scout_agent.audit.graph.context import AuditContext
 from pathlib import Path
+from typing import Any, cast
 
 from deepagents import create_deep_agent
 from langchain.agents import create_agent
@@ -61,7 +62,7 @@ def run_file_audit(
             agent_grep_limit=runtime.agent_grep_limit,
             default_grep_path=current_file_path.as_posix(),
         ),
-        subagents=expert_subagents,
+        subagents=cast(Any, expert_subagents),
         response_format=ProviderStrategy(FileAuditResponse, strict=True),
         name="scout-agent",
         checkpointer=checkpointer,

@@ -1,58 +1,54 @@
 from argparse import Namespace
 
-from scout_agent.config.settings import resolve_audit_config
 from scout_agent.cli.output.console import ConsoleOutput
 from scout_agent.cli.errors import CommandError
-from scout_agent.domain.audit import AuditState
+from scout_agent.config.settings import ResolvedAuditSettings, resolve_audit_settings
+from scout_agent.audit.service import AuditRequest, run_audit_service
 from scout_agent.llm.providers import ProviderError
-from scout_agent.audit.graph.builder import AuditContext, run_audit
-from scout_agent.audit.io.report_writer import write_report
-from scout_agent.audit.initialization import initialize_audit
 
 
 def run_audit_command(args: Namespace, output: ConsoleOutput) -> int:
     try:
-        config = resolve_audit_config(args)
-        initialized = initialize_audit(
-            project_root=config.project_root,
-            facts_path=config.facts_path,
-            scout_files=config.scout_files,
+        settings = resolve_audit_settings(
+            project_root=args.project_root,
+            facts_path=args.facts_path,
+            report_path=args.report_path,
+            model=args.model,
+            llm_mode=args.llm_mode,
+            extra_prompt=args.extra_prompt,
+            max_parallel_files=getattr(args, "max_parallel_files", None),
+            agent_read_limit=getattr(args, "agent_read_limit", None),
+            agent_grep_limit=getattr(args, "agent_grep_limit", None),
+            resume=getattr(args, "resume", None),
         )
-        model_name = config.model_name or initialized.aggregate_facts_document.model
+        request = _build_audit_request(settings)
         line_sink = output.make_progress_sink()
         session = output.make_audit_progress_session(line_sink=line_sink)
-        context = AuditContext(
-            project_root=config.project_root,
-            facts_path=config.facts_path,
-            report_path=config.report_path,
-            aggregate_facts_document=initialized.aggregate_facts_document,
-            model_name=model_name,
-            llm_mode=config.llm_mode,
-            max_parallel_files=config.max_parallel_files,
-            recursion_limit=config.recursion_limit,
-            agent_read_limit=config.agent_read_limit,
-            agent_grep_limit=config.agent_grep_limit,
-            extra_prompt=config.extra_prompt,
-            initial_state=initialized.initial_state,
-            reporter=session.reporter,
-            thread_id=config.thread_id,
+        result = session.run(
+            lambda: run_audit_service(request=request, reporter=session.reporter)
         )
-        final_state = session.run(lambda: _run_audit_task(context))
     except (FileNotFoundError, ValueError, ProviderError) as exc:
         raise CommandError(str(exc)) from exc
 
     output.print_audit_summary(
-        report_path=context.report_path,
-        final_state=final_state,
+        report_path=result.report_path,
+        final_state=result.final_state,
     )
     return 0
 
 
-def _run_audit_task(context: AuditContext) -> AuditState:
-    final_state = run_audit(runtime=context)
-    write_report(
-        report_path=context.report_path,
-        aggregate_facts_document=context.aggregate_facts_document,
-        state=final_state,
+def _build_audit_request(settings: ResolvedAuditSettings) -> AuditRequest:
+    return AuditRequest(
+        project_root=settings.project_root,
+        facts_path=settings.facts_path,
+        report_path=settings.report_path,
+        model_name=settings.model_name,
+        llm_mode=settings.llm_mode,
+        scout_files=settings.scout_files,
+        max_parallel_files=settings.max_parallel_files,
+        recursion_limit=settings.recursion_limit,
+        agent_read_limit=settings.agent_read_limit,
+        agent_grep_limit=settings.agent_grep_limit,
+        extra_prompt=settings.extra_prompt,
+        thread_id=settings.thread_id,
     )
-    return final_state

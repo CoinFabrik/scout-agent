@@ -36,6 +36,10 @@ include = ["scout_agent*"]
 [tool.setuptools.package-data]
 scout_agent = [
     "audit/prompts/*.md",
+    "audit/prompts/*/*.md",
+    "audit/prompts/*/*/*.md",
+    "audit/prompts/*/*/*/*.md",
+    "audit/prompts/*/*/*/*/*.md",
     "extract/prompts/*.md",
 ]
 

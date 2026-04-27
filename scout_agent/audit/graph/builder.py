@@ -1,10 +1,7 @@
-from hashlib import sha256
-from pathlib import Path
-from typing import Any
-import uuid
+from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph, RunnableConfig
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
 
 from scout_agent.audit.graph.context import AuditContext
@@ -16,7 +13,7 @@ from scout_agent.audit.agents.runners import (
 from scout_agent.domain.audit import AuditFailure, AuditState
 from scout_agent.audit.agents.experts import build_expert_subagents
 from scout_agent.audit.graph.memory import get_sqlite_saver
-from scout_agent.audit.tools.readonly import PolicyViolationError
+from scout_agent.audit.tools.policies import PolicyViolationError
 
 _EPC_RETRY_KEY = "__execution_path_consistency__"
 
@@ -239,11 +236,19 @@ def build_audit_graph(
     builder.add_node("dispatch", _dispatch_node)
     builder.add_node(
         "audit_file",
-        _make_audit_file_node(runtime, files_to_review, total_files, outer_thread_id),
+        cast(
+            Any,
+            _make_audit_file_node(
+                runtime,
+                files_to_review,
+                total_files,
+                outer_thread_id,
+            ),
+        ),
     )
     builder.add_node(
         "audit_execution_path_consistency",
-        _make_epc_node(runtime, files_to_review, outer_thread_id),
+        cast(Any, _make_epc_node(runtime, files_to_review, outer_thread_id)),
     )
     builder.add_node("collect", _make_collect_node(runtime))
 
@@ -263,76 +268,6 @@ def build_audit_graph(
     return builder.compile(checkpointer=checkpointer)
 
 
-def _generate_thread_id(project_root: Path) -> str:
-    project_hash = sha256(str(project_root.resolve()).encode()).hexdigest()[:12]
-    run_hash = uuid.uuid4().hex[:8]
-    return f"audit_{project_hash}_{run_hash}"
-
-
-def run_audit(*, runtime: AuditContext) -> AuditState:
-    """Run the audit using a LangGraph StateGraph with parallel fan-out.
-
-    When *thread_id* is provided the function checks for an existing
-    checkpoint.  If one is found the graph is resumed (``invoke(None, ...)``)
-    which replays from the last saved state instead of starting over.
-    Already-reviewed files are reported as skipped before the graph runs.
-    """
-    runtime.reporter.started(
-        project_root=runtime.project_root,
-        total_files=len(runtime.initial_state["files_to_review"]),
-        model_name=runtime.model_name,
-        llm_mode=runtime.llm_mode,
-    )
-    thread_id = runtime.thread_id or _generate_thread_id(runtime.project_root)
-    graph = build_audit_graph(runtime, outer_thread_id=thread_id)
-    print(f"Thread ID: {thread_id}")
-
-    run_config: RunnableConfig = {
-        "configurable": {"thread_id": thread_id},
-        "max_concurrency": runtime.max_parallel_files,
-        "recursion_limit": runtime.recursion_limit,
-    }
-
-    # --- Decide: fresh run vs. resume ---
-    is_resume = False
-    existing_state: AuditState | None = None
-    has_pending_next = False
-    if thread_id is not None:
-        existing = graph.get_state(run_config)
-        if existing is not None and existing.values:
-            is_resume = True
-            existing_state = existing.values
-            has_pending_next = bool(existing.next)
-            prev_reviewed = set(existing_state.get("files_reviewed") or [])
-            all_files = runtime.initial_state["files_to_review"]
-            total_files = len(all_files)
-            for idx, path in enumerate(all_files, start=1):
-                if path in prev_reviewed:
-                    runtime.reporter.file_skipped(
-                        index=idx,
-                        total=total_files,
-                        current_file=path,
-                    )
-            if existing_state.get("execution_path_consistency_completed"):
-                runtime.reporter.execution_path_consistency_skipped()
-
-    if is_resume:
-        resume_input = (
-            None
-            if has_pending_next
-            else _build_resume_input(existing_state)
-        )
-        result = (
-            existing_state
-            if resume_input is None and not has_pending_next and existing_state is not None
-            else graph.invoke(resume_input, config=run_config)
-        )
-    else:
-        result = graph.invoke(runtime.initial_state, config=run_config)
-
-    return result
-
-
 def _is_toxic_failure(exc: Exception) -> bool:
     if isinstance(exc, PolicyViolationError):
         return True
@@ -345,19 +280,3 @@ def _is_toxic_failure(exc: Exception) -> bool:
         return True
 
     return False
-
-
-def _build_resume_input(state: AuditState | None) -> dict[str, Any] | None:
-    if state is None:
-        return None
-
-    files_to_review = list(state.get("files_to_review") or [])
-    epc_completed = bool(state.get("execution_path_consistency_completed"))
-    if not files_to_review and epc_completed:
-        return None
-
-    return {
-        "files_to_review": files_to_review,
-        "execution_path_consistency_completed": epc_completed,
-        "retry_generations": dict(state.get("retry_generations") or {}),
-    }

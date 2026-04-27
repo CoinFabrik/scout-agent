@@ -5,12 +5,12 @@ from pathlib import Path
 from typing import TextIO
 
 from scout_agent.cli.output.audit_progress import AuditProgressSession, PlainAuditProgressSession
-from scout_agent.domain.audit import AuditState
+from scout_agent.domain.audit import AuditState, latest_unresolved_failures
 from scout_agent.domain.facts import aggregate_facts_file_path
 from scout_agent.audit.io.reporting import AuditProgressReporter
 from scout_agent.extract.reporting import ExtractProgressReporter
 from scout_agent.progress import LineProgressSink, PlainLineProgressSink
-from scout_agent.extract.service import ExtractFactsPipelineResult
+from scout_agent.extract.service import ExtractResult
 
 
 class ConsoleOutput:
@@ -46,7 +46,7 @@ class ConsoleOutput:
 
     def print_extract_summary(
         self,
-        result: ExtractFactsPipelineResult,
+        result: ExtractResult,
     ) -> None:
         print(f"FACTS written to: {result.facts_path}", file=self._stdout)
         print(

@@ -2,9 +2,9 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from pydantic import SecretStr
+
 from scout_agent.llm.model_config import get_model_kwargs
-
-
 
 DEFAULT_SDK_MAX_RETRIES = 2
 
@@ -103,7 +103,7 @@ def build_chat_model(model_name: str, llm_mode: str):
         return ChatOpenAI(
             model=match.model_name,
             use_responses_api=True,
-            api_key=get_api_key(match.provider),
+            api_key=SecretStr(get_api_key(match.provider)),
             **kwargs,
         )
 
@@ -114,8 +114,8 @@ def build_chat_model(model_name: str, llm_mode: str):
             raise ProviderError("Missing langchain-anthropic dependency.") from exc
 
         return ChatAnthropic(
-            model=match.model_name,
-            api_key=get_api_key(match.provider),
+            model_name=match.model_name,
+            api_key=SecretStr(get_api_key(match.provider)),
             **kwargs,
         )
 
